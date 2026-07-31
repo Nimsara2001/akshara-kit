@@ -1,11 +1,47 @@
 [project]
 name = "akshara-kit"
 version = "0.1.0"
-description = "Add your description here"
+description = "Hybrid intelligent framework for Sinhala document ingestion"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pydantic>=2.0",
+    # Required by eye/encoding_normaliser.py (spec Section 6.4). The spec's
+    # Section 2 dependency block omits it; that is a spec bug — the package
+    # cannot run its own core logic without it.
+    "pandukabhaya>=1.0.1",
+]
+
+[project.optional-dependencies]
+pdf = ["pypdf>=5.0", "pdfplumber>=0.11", "pymupdf>=1.24", "pdfminer.six>=20231228"]
+# pillow is listed explicitly: ocr_adapter calls PIL.Image.open directly rather
+# than relying on it arriving transitively via pytesseract.
+ocr = ["pytesseract>=0.3.10", "pillow>=10.0", "pdf2image>=1.17"]
+docx = ["python-docx>=1.1"]
+xlsx = ["openpyxl>=3.1"]
+sinhala = ["sinlib>=0.1.13"]
+all = [
+    "akshara-kit[pdf]",
+    "akshara-kit[ocr]",
+    "akshara-kit[docx]",
+    "akshara-kit[xlsx]",
+    "akshara-kit[sinhala]",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
 
 [build-system]
 requires = ["uv_build>=0.9.14,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "ocr: requires the Tesseract binary and the Sinhala 'sin' language pack",
+    "poppler: requires poppler-utils (pdftoppm) on PATH",
+    "integration: end-to-end route() call over a fixture file",
+]
+
+[tool.coverage.run]
+source = ["akshara_kit"]
