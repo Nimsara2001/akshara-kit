@@ -107,11 +107,7 @@ uv run pytest --cov=akshara_kit --cov-report=term-missing
 
 Tests are hermetic: fixtures are committed, and no network or document corpus is needed.
 Tests requiring Tesseract are marked `ocr` and skip with an actionable message when the
-Sinhala pack is absent. Regenerate the fixtures with:
-
-```bash
-uv run python tests/fixtures/generate_fixtures.py
-```
+Sinhala pack is absent.
 
 ### Not yet implemented
 
