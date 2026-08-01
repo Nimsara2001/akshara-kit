@@ -12,6 +12,14 @@ Environment overrides, for installs that are not on ``PATH``:
     Full path to ``tesseract.exe`` / ``tesseract``.
 ``AKSHARA_POPPLER_PATH``
     Directory containing ``pdftoppm``, for the optional pdf2image rasteriser.
+``AKSHARA_GEMINI_API_KEY`` / ``AKSHARA_OPENAI_API_KEY`` / ``AKSHARA_ANTHROPIC_API_KEY``
+    API keys for the multimodal fallback. Each falls back to the provider's own
+    conventional variable (``GEMINI_API_KEY`` and friends) when unset.
+
+On reading provider-native key variables: doing so is only safe because finding
+a key never *causes* anything. The multimodal path runs solely when the caller
+passes a :class:`~akshara_kit.contracts.extraction.MultimodalConfig`, so these
+probes answer "could this provider be used, if asked" — never "should it be".
 """
 
 from __future__ import annotations
@@ -91,6 +99,56 @@ def poppler_available() -> bool:
         return True
     poppler_dir = os.environ.get("AKSHARA_POPPLER_PATH")
     return bool(poppler_dir and shutil.which("pdftoppm", path=poppler_dir))
+
+
+# --- multimodal providers -------------------------------------------------
+
+#: Per provider: the akshara-specific variable first, then the provider's own
+#: conventional name. Ordered, so an explicit AKSHARA_* always wins.
+_API_KEY_VARIABLES: dict[str, tuple[str, ...]] = {
+    "gemini": ("AKSHARA_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "openai": ("AKSHARA_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    "claude": ("AKSHARA_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+}
+
+#: The pip package each provider needs, for the "not installed" message.
+PROVIDER_PACKAGES: dict[str, str] = {
+    "gemini": "google-genai",
+    "openai": "openai",
+    "claude": "anthropic",
+}
+
+
+def resolve_api_key(provider: str) -> str | None:
+    """The API key for a provider, or ``None``.
+
+    Deliberately uncached: unlike a binary on disk, a key can be exported
+    between calls in a notebook or test, and a cached ``None`` would be
+    impossible to clear.
+    """
+    for variable in _API_KEY_VARIABLES.get(provider, ()):
+        value = os.environ.get(variable)
+        if value:
+            return value
+    return None
+
+
+def multimodal_available(provider: str) -> bool:
+    """True if a key is configured for this provider. Never raises."""
+    return resolve_api_key(provider) is not None
+
+
+def describe_multimodal_availability(provider: str) -> str:
+    """A one-line, actionable explanation for one provider."""
+    variables = _API_KEY_VARIABLES.get(provider)
+    if variables is None:
+        known = ", ".join(sorted(_API_KEY_VARIABLES))
+        return f"Unknown multimodal provider {provider!r}; known providers: {known}."
+    if resolve_api_key(provider) is None:
+        return (
+            f"No API key found for {provider!r}. Set one of: {', '.join(variables)}."
+        )
+    return f"An API key for {provider!r} is configured."
 
 
 def describe_ocr_availability() -> str:

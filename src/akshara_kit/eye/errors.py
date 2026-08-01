@@ -45,3 +45,27 @@ class ExtractionFailedError(AksharaKitError):
 
 class OcrUnavailableError(AksharaKitError):
     """The Tesseract binary or the Sinhala language pack is missing."""
+
+
+class MultimodalUnavailableError(AksharaKitError):
+    """The requested vision-language provider cannot be used.
+
+    Either no API key is configured for it, or its SDK is not installed.
+    """
+
+
+class MultimodalBudgetExceededError(AksharaKitError):
+    """The document needs more pages transcribed than the caller allowed.
+
+    Raised rather than silently truncating to the cap: a partial transcription
+    presented as a whole one is worse than a clear refusal, and the caller is
+    the only one who can decide whether the extra pages are worth paying for.
+    """
+
+    def __init__(self, needed: int, allowed: int) -> None:
+        self.needed = needed
+        self.allowed = allowed
+        super().__init__(
+            f"{needed} page(s) need multimodal transcription but the limit is "
+            f"{allowed}. Raise MultimodalConfig.max_pages to proceed."
+        )

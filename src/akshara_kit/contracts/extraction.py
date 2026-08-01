@@ -21,6 +21,42 @@ class SourceFormat(str, Enum):
     XLSX = "xlsx"
 
 
+class MultimodalProvider(str, Enum):
+    """A vision-language provider the multimodal fallback can call.
+
+    There is deliberately no default and no implicit priority order: sending a
+    page image to a third party is the caller's decision to make explicitly.
+    """
+
+    GEMINI = "gemini"
+    OPENAI = "openai"
+    CLAUDE = "claude"
+
+
+class MultimodalConfig(BaseModel):
+    """Opt-in to the vision-language fallback.
+
+    The *presence* of this object is the authorisation to send page images off
+    the machine. An API key sitting in the environment is not: keys are set for
+    all sorts of unrelated reasons, and a library that starts uploading a user's
+    documents because it found one would be doing something the user never
+    asked for. Nothing reaches a provider unless one of these is passed.
+
+    Requiring ``provider`` makes the two decisions inseparable — there is no way
+    to enable the fallback without also saying who may see the pages.
+    """
+
+    provider: MultimodalProvider
+    #: ``None`` resolves to the provider module's ``DEFAULT_MODEL``. Any other
+    #: string is forwarded verbatim: a model released after this library should
+    #: not require a release of this library.
+    model: str | None = None
+    #: Refuse documents needing more than this many pages transcribed. A
+    #: 180-page document sent a page at a time is a real bill and a slow one.
+    max_pages: int = Field(default=20, ge=1)
+    dpi: int = Field(default=200, ge=72)
+
+
 class FontDetectionMethod(str, Enum):
     """How the legacy-encoding decision was reached.
 
@@ -95,3 +131,10 @@ class ExtractionResult(BaseModel):
     unmapped_legacy_fonts: list[str] = Field(default_factory=list)
     attempts: list[AdapterAttempt] = Field(default_factory=list)
     pages_ocred: list[int] = Field(default_factory=list)
+
+    #: Pages a vision-language model transcribed, and who served them. Empty
+    #: unless the caller opted in with a :class:`MultimodalConfig`. Recorded
+    #: because "which pages left the machine, and to whom" is something a
+    #: caller must be able to audit after the fact.
+    pages_multimodal: list[int] = Field(default_factory=list)
+    multimodal_provider: str | None = None

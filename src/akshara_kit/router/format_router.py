@@ -11,7 +11,11 @@ import logging
 import zipfile
 from pathlib import Path
 
-from akshara_kit.contracts.extraction import ExtractionResult, SourceFormat
+from akshara_kit.contracts.extraction import (
+    ExtractionResult,
+    MultimodalConfig,
+    SourceFormat,
+)
 from akshara_kit.eye.errors import UnsupportedFormatError
 
 __all__ = ["UnsupportedFormatError", "detect_format", "route"]
@@ -109,16 +113,24 @@ def _zip_format(path: Path) -> SourceFormat | None:
     return matched[0]
 
 
-def route(file_path: str) -> ExtractionResult:
+def route(
+    file_path: str, *, multimodal: MultimodalConfig | None = None
+) -> ExtractionResult:
     """Extract a document's text, whatever its format.
 
     The documented public entry point of the Eye module (Section 5). Format
     dispatch itself lives in :mod:`akshara_kit.eye.coordinator`; this function
     is the name callers use.
 
+    ``multimodal`` is keyword-only and defaults to ``None``, so Section 5's
+    one-argument signature is unchanged and ``route(path)`` never contacts an
+    external service. Passing a
+    :class:`~akshara_kit.contracts.extraction.MultimodalConfig` opts in to the
+    vision-language fallback for PDF pages that OCR could not rescue.
+
     :raises UnsupportedFormatError: if the file is not a PDF, DOCX or XLSX.
     :raises ExtractionFailedError: if every applicable backend failed.
     """
     from akshara_kit.eye import coordinator
 
-    return coordinator.extract(file_path)
+    return coordinator.extract(file_path, multimodal=multimodal)

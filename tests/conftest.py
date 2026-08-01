@@ -27,6 +27,18 @@ def pytest_collection_modifyitems(config, items) -> None:
             if "poppler" in item.keywords:
                 item.add_marker(skip_poppler)
 
+    # `vlm` tests spend real money against a real API. Skipped unless a key is
+    # configured, so a clean clone never bills anyone by surprise.
+    from akshara_kit.multimodal.fallback import PROVIDERS
+
+    if not any(capabilities.multimodal_available(p) for p in PROVIDERS):
+        skip_vlm = pytest.mark.skip(
+            reason="no multimodal API key configured; set e.g. AKSHARA_GEMINI_API_KEY"
+        )
+        for item in items:
+            if "vlm" in item.keywords:
+                item.add_marker(skip_vlm)
+
 
 @pytest.fixture(scope="session")
 def fixtures_dir() -> pathlib.Path:

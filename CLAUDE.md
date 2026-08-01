@@ -20,8 +20,9 @@ here (Section 4).
 
 ### Non-goals for this phase (do not implement)
 
-- Multimodal vision-language API fallback (e.g. Gemini) — stub only, raise
-  `NotImplementedError` with a clear message.
+- ~~Multimodal vision-language API fallback~~ — **now implemented**, see Section 14.
+  It was deferred as a stub; the broken-cmap fixtures showed pages that defeat both
+  the text layer and Tesseract, which is exactly the case a vision model exists for.
 - U-Net visual layout analysis — stub only.
 - Agentic orchestration controller (cost-aware ReAct-style escalation) — the current
   scope uses a simpler deterministic router (Section 5), not a learned/agentic policy.
@@ -120,9 +121,16 @@ src/akshara_kit/
 │   ├── coordinator.py         # top-level Eye Coordinator, dispatches by format
 │   ├── capabilities.py        # cached probes for Tesseract / poppler
 │   └── errors.py              # the named exception hierarchy
-├── multimodal/
+├── multimodal/                # Section 14
 │   ├── __init__.py
-│   └── fallback.py            # STUB ONLY — raise NotImplementedError
+│   ├── fallback.py            # public surface + provider dispatch
+│   ├── prompts.py             # the shared transcription prompt
+│   └── providers/
+│       ├── __init__.py
+│       ├── base.py            # Transcriber Protocol
+│       ├── gemini.py
+│       ├── openai.py
+│       └── claude.py
 └── layout/
     ├── __init__.py
     └── analyser.py             # STUB ONLY — raise NotImplementedError
@@ -140,6 +148,7 @@ tests/
 ├── test_quality_probe.py
 ├── test_ocr_decision.py
 ├── test_ocr_adapter.py
+├── test_multimodal.py         # Section 14; providers stubbed, no network
 ├── test_fixtures_current.py   # guards the fixtures against silent drift
 └── test_coordinator_integration.py
 ```
@@ -191,6 +200,22 @@ class ExtractionResult(BaseModel):
     detected_legacy_fonts: list[str] = []
     ocr_used: bool = False
     metadata: dict = {}
+    pages_multimodal: list[int] = []        # Section 14
+    multimodal_provider: str | None = None  # Section 14
+
+
+class MultimodalProvider(str, Enum):
+    GEMINI = "gemini"
+    OPENAI = "openai"
+    CLAUDE = "claude"
+
+
+class MultimodalConfig(BaseModel):
+    """Presence of this object IS the opt-in to send page images off-machine."""
+    provider: MultimodalProvider   # required — no default, no implicit ordering
+    model: str | None = None       # None -> the provider module's DEFAULT_MODEL
+    max_pages: int = 20
+    dpi: int = 200
 ```
 
 Do not change field names once other modules depend on them — this contract is the
@@ -540,8 +565,89 @@ Add a module-level docstring note in `encoding_normaliser.py`:
 - `uv sync --extra all --group dev` succeeds from a clean clone.
 - `uv run pytest --cov=akshara_kit` passes with all tests green.
 - `route()` produces a valid `ExtractionResult` for all six fixture files.
-- Calling the multimodal or layout-analyser stubs raises `NotImplementedError`
-  with a clear message rather than failing silently or crashing ungracefully.
+- Calling the layout-analyser stub raises `NotImplementedError` with a clear
+  message rather than failing silently or crashing ungracefully.
+- `route(path)` with no `multimodal` argument never contacts an external
+  service, whatever API keys happen to be set in the environment.
 - README.md documents: install instructions (including the Tesseract/poppler
-  system dependencies), a minimal usage example calling `route()`, and the
-  Section 11 limitation note.
+  system dependencies), a minimal usage example calling `route()`, the
+  Section 11 limitation note, and the Section 14 opt-in and cost model.
+
+---
+
+## 14. Multimodal Vision-Language Fallback
+
+Files: `multimodal/fallback.py`, `multimodal/prompts.py`, `multimodal/providers/*`
+
+The highest-cost rung of the escalation ladder and the only one that leaves the
+machine. It exists for the failure the local stack cannot reach: a page whose text
+layer is a broken `ToUnicode` cmap *and* whose rendering also defeats Tesseract,
+or a scan on a machine with no OCR installed.
+
+### 14.1 Consent is the design constraint
+
+**An API key in the environment is not permission.** Keys get exported for all sorts
+of unrelated reasons, and a document-ingestion library that began uploading a user's
+documents because it found one would be doing something the user never asked for.
+
+Nothing contacts a provider unless the caller passes a `MultimodalConfig`. That one
+object carries the opt-in, the provider and the budget together so none can be
+forgotten separately, and `provider` has no default — with two keys configured,
+"use the first" is a guess about where someone's documents should be sent, and this
+library does not make that guess.
+
+This property is asserted directly:
+`test_multimodal.py::test_route_without_config_never_contacts_a_provider` booby-traps
+every route into a provider rather than checking a return value.
+
+### 14.2 Last resort, not an alternative
+
+`_run_multimodal` in `pdf_coordinator.py` runs **after** the OCR stage, over the same
+page list. A page escalates only if it was a repair candidate *and* still reads as
+unusable afterwards — empty, or malformed by Section 7.1. That one test covers all
+three ways OCR falls short (unavailable, raised, or returned text as garbled as the
+text layer), and guarantees a page OCR fixed never reaches a paid API.
+
+### 14.3 Providers and models
+
+One module per provider, each owning its own `DEFAULT_MODEL` so adding a provider
+touches one file. Modules never import each other; dispatch lives in `fallback.py`.
+
+| Provider | `DEFAULT_MODEL` | SDK | Notes |
+|---|---|---|---|
+| `gemini` | `gemini-3.6-flash` | `google-genai` | Inline image part |
+| `openai` | `gpt-5.6` | `openai` | **Responses API**, `input_image` with a data URI |
+| `claude` | `claude-opus-5` | `anthropic` | Image block before text; `effort: "low"` |
+
+Model resolution is per-call override → `config.model` → `DEFAULT_MODEL`, done once in
+`fallback.resolve_model` so the model that actually ran is recordable on the result.
+Model strings are **never** validated against an allow-list: a model released after
+this library must not require a release of this library.
+
+Two Claude-specific rules, both load-bearing:
+
+- **Do not disable thinking.** With `thinking={"type": "disabled"}`, Opus 5 can leak
+  `<thinking>` tags into its visible response. Here the visible response *is* the
+  extracted text, so a leaked tag lands in the corpus. Use `effort: "low"` instead.
+- **Check `stop_reason == "refusal"` before reading `content`.** A refusal is HTTP 200
+  with empty or partial content; indexing `content[0]` first turns a declined page
+  into an `IndexError`.
+
+### 14.4 Budget
+
+`max_pages` (default 20) is checked before the first request, so an over-budget
+document costs nothing. Exceeding it raises `MultimodalBudgetExceededError` rather
+than trimming to fit — a partial transcription presented as a whole one is worse than
+a clear refusal, and only the caller can decide whether the extra pages are worth
+paying for.
+
+### 14.5 Environment variables
+
+Per provider, `AKSHARA_*_API_KEY` first, then the provider's conventional name
+(`GEMINI_API_KEY` / `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). Reading
+a provider-native variable is safe **only** because finding a key never causes
+anything — see 14.1.
+
+Unlike the Tesseract probes, key lookup is deliberately **not** cached: a key can be
+exported between calls in a notebook or a test, and a cached `None` would be
+impossible to clear.

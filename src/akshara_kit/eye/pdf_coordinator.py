@@ -33,6 +33,7 @@ from akshara_kit.contracts.extraction import (
     AdapterAttempt,
     ExtractionResult,
     FontDetectionMethod,
+    MultimodalConfig,
     QualityScore,
     SourceFormat,
 )
@@ -83,6 +84,7 @@ def extract(
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     use_ocr: bool = True,
     repair_malformed: bool = True,
+    multimodal: MultimodalConfig | None = None,
 ) -> ExtractionResult:
     """Extract a PDF's text, normalised to Sinhala Unicode.
 
@@ -93,6 +95,10 @@ def extract(
     garbled — a broken ToUnicode cmap — through OCR. Set it to ``False`` to
     trust the text layer unconditionally, which is faster but returns the
     document's own corruption verbatim.
+
+    ``multimodal`` opts in to the vision-language fallback for pages OCR could
+    not rescue. It defaults to ``None``, and nothing is ever sent off the
+    machine without it — see :mod:`akshara_kit.multimodal.fallback`.
     """
     started = time.perf_counter()
     results, attempts = _sweep(
@@ -110,8 +116,12 @@ def extract(
             attempt.quality = candidates[attempt.backend_id].quality
 
     winner = _select(candidates)
-    winner = _apply_ocr(
-        file_path, winner, enabled=use_ocr, repair_malformed=repair_malformed
+    winner = _repair_pages(
+        file_path,
+        winner,
+        enabled=use_ocr,
+        repair_malformed=repair_malformed,
+        multimodal=multimodal,
     )
 
     return ExtractionResult(
@@ -125,6 +135,8 @@ def extract(
         unmapped_legacy_fonts=winner.unmapped_fonts,
         ocr_used=bool(winner.pages_ocred),
         pages_ocred=winner.pages_ocred,
+        pages_multimodal=winner.pages_multimodal,
+        multimodal_provider=winner.multimodal_provider,
         attempts=attempts,
         metadata=winner.metadata,
     )
@@ -228,6 +240,8 @@ class _Candidate:
     unmapped_fonts: list[str] = None  # type: ignore[assignment]
     pages: list[str] = None  # type: ignore[assignment]
     pages_ocred: list[int] = None  # type: ignore[assignment]
+    pages_multimodal: list[int] = None  # type: ignore[assignment]
+    multimodal_provider: str | None = None
     metadata: dict = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
@@ -235,6 +249,7 @@ class _Candidate:
         self.unmapped_fonts = self.unmapped_fonts or []
         self.pages = self.pages or []
         self.pages_ocred = self.pages_ocred or []
+        self.pages_multimodal = self.pages_multimodal or []
         self.metadata = self.metadata or {}
 
 
@@ -339,27 +354,32 @@ def _raw_winner(candidates: dict[str, _Candidate]) -> str | None:
     return best.backend_id
 
 
-# --- OCR ------------------------------------------------------------------
+# --- page repair: OCR, then the multimodal fallback -----------------------
 
 
-def _apply_ocr(
-    file_path: str, winner: _Candidate, *, enabled: bool, repair_malformed: bool = True
+def _repair_pages(
+    file_path: str,
+    winner: _Candidate,
+    *,
+    enabled: bool,
+    repair_malformed: bool = True,
+    multimodal: MultimodalConfig | None = None,
 ) -> _Candidate:
-    """Replace pages with no usable text stream — or a garbled one — with OCR.
+    """Re-read pages with no usable text stream — or a garbled one.
 
-    Merged back at the original page index, so a document mixing scanned and
-    born-digital pages keeps its reading order. OCR output is Unicode Sinhala
-    already, so it is never passed through legacy conversion.
+    Two repair stages over one shared page list, cheapest first: local OCR, then
+    the multimodal fallback for whatever OCR could not fix. Both merge back at
+    the original page index, so a document mixing scanned and born-digital pages
+    keeps its reading order. Both produce Unicode Sinhala already, so neither is
+    passed through legacy conversion.
 
     The page texts are taken span-normalised whenever the span candidate won.
     Rebuilding from raw pages instead would silently undo the legacy conversion
-    for every document that needs both conversion *and* OCR — the merged text
+    for every document that needs both conversion *and* repair — the merged text
     replaces the winner's wholesale, so whatever is merged is what survives.
     """
-    if not enabled:
+    if not enabled and multimodal is None:
         return winner
-
-    from akshara_kit.eye import capabilities
 
     pages = _page_texts(file_path, normalised=winner.backend_id == SPAN_BACKEND_ID)
     if pages is None:
@@ -369,14 +389,35 @@ def _apply_ocr(
     if not needed:
         return winner
 
+    ocred = _run_ocr(file_path, pages, needed) if enabled else []
+    multimodal_pages, model = _run_multimodal(file_path, pages, needed, multimodal)
+
+    if not ocred and not multimodal_pages:
+        return winner
+
+    winner.text = _PAGE_SEPARATOR.join(pages)
+    winner.quality = score(winner.text)
+    winner.pages_ocred = ocred
+    winner.pages_multimodal = multimodal_pages
+    if multimodal_pages:
+        winner.multimodal_provider = multimodal.provider.value
+        winner.metadata = dict(winner.metadata)
+        winner.metadata["multimodal_model"] = model
+    return winner
+
+
+def _run_ocr(file_path: str, pages: list[str], needed: list[int]) -> list[int]:
+    """OCR each candidate page in place. Returns the indices that succeeded."""
+    from akshara_kit.eye import capabilities
+
     if not capabilities.sinhala_ocr_available():
         logger.warning(
-            "%d page(s) of %s have no text layer but OCR is unavailable: %s",
+            "%d page(s) of %s need re-reading but OCR is unavailable: %s",
             len(needed),
             file_path,
             capabilities.describe_ocr_availability(),
         )
-        return winner
+        return []
 
     from akshara_kit.adapters.extractors import ocr_adapter
 
@@ -388,14 +429,46 @@ def _apply_ocr(
             logger.warning("OCR failed on page %d of %s: %s", index, file_path, exc)
             continue
         ocred.append(index)
+    return ocred
 
-    if not ocred:
-        return winner
 
-    winner.text = _PAGE_SEPARATOR.join(pages)
-    winner.quality = score(winner.text)
-    winner.pages_ocred = ocred
-    return winner
+def _run_multimodal(
+    file_path: str,
+    pages: list[str],
+    needed: list[int],
+    config: MultimodalConfig | None,
+) -> tuple[list[int], str | None]:
+    """Send pages OCR could not rescue to a vision-language model.
+
+    Genuinely last resort: a page reaches here only if it was a repair candidate
+    *and* still reads as unusable after the OCR stage ran — which covers all
+    three ways OCR can come up short (unavailable, raised, or returned text just
+    as garbled as the text layer). A page OCR fixed is never re-sent, so the
+    common case costs nothing.
+    """
+    if config is None:
+        return [], None
+
+    from akshara_kit.eye.ocr_decision import MIN_CHARS, is_malformed
+
+    remaining = [
+        index
+        for index in needed
+        if len(pages[index].strip()) < MIN_CHARS or is_malformed(pages[index])
+    ]
+    if not remaining:
+        return [], None
+
+    from akshara_kit.multimodal import fallback
+
+    # Budget errors propagate: exceeding the cap is the caller's decision to
+    # revisit, not something to silently trim to fit.
+    transcribed, model = fallback.transcribe_pages(
+        file_path, remaining, config=config
+    )
+    for index, text in transcribed.items():
+        pages[index] = text
+    return sorted(transcribed), model
 
 
 def _page_texts(file_path: str, *, normalised: bool = False) -> list[str] | None:

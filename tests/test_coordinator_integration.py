@@ -184,11 +184,17 @@ def test_unsupported_format_is_rejected(tmp_path: pathlib.Path) -> None:
 # --- stubs ----------------------------------------------------------------
 
 
-def test_multimodal_fallback_raises_clearly() -> None:
+def test_multimodal_requires_an_explicit_opt_in() -> None:
+    """No longer a stub, but still inert by default.
+
+    ``extract`` now works — what it will not do is run without a config, so the
+    old NotImplementedError check is replaced by the property that matters:
+    reaching a provider takes a deliberate act by the caller.
+    """
     from akshara_kit.multimodal import fallback
 
-    with pytest.raises(NotImplementedError, match="multimodal"):
-        fallback.extract("anything.pdf")
+    with pytest.raises(TypeError, match="config"):
+        fallback.extract("anything.pdf")  # type: ignore[call-arg]
 
 
 def test_layout_analyser_raises_clearly() -> None:

@@ -34,7 +34,8 @@ uv sync --extra all --group dev
 ```
 
 Extras can be installed selectively if you only handle some formats: `pdf`, `docx`, `xlsx`,
-`ocr`, `sinhala`. Importing the package never requires extras you are not using.
+`ocr`, `sinhala`, `multimodal`. Importing the package never requires extras you are not
+using.
 
 ### System dependency: Tesseract (OCR only)
 
@@ -117,6 +118,79 @@ Fonts fall into three groups, and the distinction matters:
   rather than being silently corrupted.
 - **Already Unicode** — Iskoola Pota, Nirmala UI, Latha and friends. Never converted.
 
+## Multimodal fallback (opt-in)
+
+Some pages defeat everything local: the text layer is a broken cmap *and* the
+rendering is too degraded or decorative for Tesseract. A vision-language model reads
+what the page displays, so akshara-kit can send those pages to Gemini, OpenAI or
+Claude — but only if you ask it to.
+
+**An API key in your environment is not permission.** Keys get set for all kinds of
+unrelated reasons, and this library will not start uploading your documents because
+it found one. Nothing leaves your machine unless you pass a `MultimodalConfig`:
+
+```python
+from akshara_kit import route, MultimodalConfig
+
+result = route("textbook.pdf", multimodal=MultimodalConfig(provider="gemini"))
+
+print(result.pages_multimodal)                  # which pages were sent
+print(result.multimodal_provider)               # and to whom
+print(result.metadata["multimodal_model"])      # and which model read them
+```
+
+`provider` is required — there is no default and no priority order. With two keys
+configured, picking one for you would be a guess about where your documents should
+go.
+
+### It is a last resort, and only pays for what OCR could not fix
+
+A page is sent only when it was already a repair candidate **and** is still unusable
+after OCR ran — empty, or still failing the well-formedness check. A page Tesseract
+fixed never reaches a paid API. On the bundled `sample_mixed.pdf`, OCR repairs both
+pages, so enabling the fallback costs nothing at all.
+
+### Models
+
+Each provider has a default you can override per config or per call:
+
+| Provider | Default model | Alternatives |
+|---|---|---|
+| `gemini` | `gemini-3.6-flash` | `gemini-3.5-flash-lite`, `gemini-2.5-pro` |
+| `openai` | `gpt-5.6` | `gpt-5.6-terra`, `gpt-5.6-luna` |
+| `claude` | `claude-opus-5` | `claude-sonnet-5`, `claude-haiku-4-5` |
+
+```python
+MultimodalConfig(provider="openai", model="gpt-5.6-terra")
+```
+
+Model strings are passed straight through, never checked against a list — a model
+released after this library still works without waiting for a release of it.
+
+### Keys, budget, and calling it directly
+
+```bash
+uv sync --extra multimodal
+export AKSHARA_GEMINI_API_KEY=...   # or GEMINI_API_KEY / GOOGLE_API_KEY
+```
+
+`AKSHARA_OPENAI_API_KEY` / `OPENAI_API_KEY` and `AKSHARA_ANTHROPIC_API_KEY` /
+`ANTHROPIC_API_KEY` work the same way.
+
+`max_pages` defaults to 20 and is checked **before** the first request, so an
+over-budget document costs nothing — it raises `MultimodalBudgetExceededError`
+rather than silently transcribing the first 20 pages and presenting the result as
+complete.
+
+To bypass the escalation logic entirely and transcribe directly:
+
+```python
+from akshara_kit.multimodal import fallback
+
+text = fallback.extract_page("scan.pdf", 3, config=MultimodalConfig(provider="claude"))
+result = fallback.extract("scan.pdf", config=MultimodalConfig(provider="gemini", max_pages=40))
+```
+
 ### Known limitation
 
 As of this implementation, [`pandukabhaya`](https://github.com/akuruAI/Pandukabhaya)
@@ -142,9 +216,12 @@ with broken text layers and repairing them means rasterising and re-reading a fe
 hundred pages. Integration tests share one cached extraction per fixture; skip the
 OCR legs entirely with `-m "not ocr"` for a fast inner loop.
 
+Tests that call a real vision API are marked `vlm` and skip unless a key is configured,
+so a clean clone never bills anyone by surprise. Every other multimodal test stubs its
+provider and needs no key, no SDK and no network.
+
 ### Not yet implemented
 
-`multimodal/fallback.py` (vision-language model fallback) and `layout/analyser.py` (U-Net
-layout analysis) are stubs that raise `NotImplementedError`. Both are future work, and their
-signatures already match the adapter contract so they can be registered alongside the local
-extractors when built.
+`layout/analyser.py` (U-Net layout analysis) is a stub that raises `NotImplementedError`.
+It is future work, and its signature already matches the adapter contract so it can be
+registered alongside the local extractors when built.

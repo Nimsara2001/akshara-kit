@@ -20,12 +20,16 @@ ocr = ["pytesseract>=0.3.10", "pillow>=10.0", "pdf2image>=1.17"]
 docx = ["python-docx>=1.1"]
 xlsx = ["openpyxl>=3.1"]
 sinhala = ["sinlib>=0.1.13"]
+# The vision-language fallback. All three SDKs, but each provider imports its
+# own lazily, so installing this extra and using only one provider is fine.
+multimodal = ["anthropic>=0.40", "openai>=1.60", "google-genai>=1.0"]
 all = [
     "akshara-kit[pdf]",
     "akshara-kit[ocr]",
     "akshara-kit[docx]",
     "akshara-kit[xlsx]",
     "akshara-kit[sinhala]",
+    "akshara-kit[multimodal]",
 ]
 
 [dependency-groups]
@@ -41,6 +45,7 @@ markers = [
     "ocr: requires the Tesseract binary and the Sinhala 'sin' language pack",
     "poppler: requires poppler-utils (pdftoppm) on PATH",
     "integration: end-to-end route() call over a fixture file",
+    "vlm: calls a real vision-language API; needs a key and costs money",
 ]
 
 [tool.coverage.run]
