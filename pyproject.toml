@@ -31,6 +31,13 @@ all = [
     "akshara-kit[sinhala]",
     "akshara-kit[multimodal]",
 ]
+# The Brain. sentence-transformers pulls in torch, which is large, so this is
+# deliberately NOT part of `all` — the rule base and coordinator run without it
+# against any CoherenceScorer.
+brain = [
+    "swiplserver>=1.0",
+    "sentence-transformers>=5.4",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
@@ -46,6 +53,8 @@ markers = [
     "poppler: requires poppler-utils (pdftoppm) on PATH",
     "integration: end-to-end route() call over a fixture file",
     "vlm: calls a real vision-language API; needs a key and costs money",
+    "prolog: requires a SWI-Prolog binary on PATH",
+    "labse: downloads and runs the LaBSE sentence encoder",
 ]
 
 [tool.coverage.run]

@@ -47,6 +47,10 @@ class OcrUnavailableError(AksharaKitError):
     """The Tesseract binary or the Sinhala language pack is missing."""
 
 
+class PrologUnavailableError(AksharaKitError):
+    """SWI-Prolog is not installed, so the symbolic rule engine cannot start."""
+
+
 class MultimodalUnavailableError(AksharaKitError):
     """The requested vision-language provider cannot be used.
 

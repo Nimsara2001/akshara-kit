@@ -4,14 +4,16 @@ A hybrid intelligent framework for ingesting Sinhala-language documents into cle
 Unicode-normalised text suitable for downstream semantic chunking and Retrieval-Augmented
 Generation.
 
-This repository currently implements the **Eye module**: file-type detection, text
-extraction, legacy-font detection, legacy-to-Unicode conversion and OCR routing. The Brain
-module (semantic chunking) consumes this module's output and is out of scope here.
+Two modules. The **Eye** handles file-type detection, text extraction, legacy-font
+detection, legacy-to-Unicode conversion, OCR routing and a vision-model fallback. The
+**Brain** turns that text into semantic chunks, combining a Sinhala grammar rule base in
+Prolog with a multilingual sentence encoder.
 
 ```python
-from akshara_kit import route
+from akshara_kit import route, chunk
 
-result = route("textbook.pdf")
+result = route("textbook.pdf")     # extract
+doc = chunk(result)                # chunk
 
 print(result.text)                        # Unicode Sinhala
 print(result.backend_id)                  # which extractor won
@@ -34,8 +36,9 @@ uv sync --extra all --group dev
 ```
 
 Extras can be installed selectively if you only handle some formats: `pdf`, `docx`, `xlsx`,
-`ocr`, `sinhala`, `multimodal`. Importing the package never requires extras you are not
-using.
+`ocr`, `sinhala`, `multimodal`, `brain`. Importing the package never requires extras you
+are not using. Note `brain` is **not** included in `all`, because `sentence-transformers`
+pulls in torch — install it explicitly when you need the neural coherence scorer.
 
 ### System dependency: Tesseract (OCR only)
 
@@ -117,6 +120,108 @@ Fonts fall into three groups, and the distinction matters:
   `ExtractionResult.unmapped_legacy_fonts`, and their text passes through **unchanged**
   rather than being silently corrupted.
 - **Already Unicode** — Iskoola Pota, Nirmala UI, Latha and friends. Never converted.
+
+## Chunking (the Brain)
+
+Extraction gives you a document. Chunking gives you the units a retrieval index
+actually stores.
+
+```python
+from akshara_kit import route, chunk
+
+doc = chunk(route("textbook.pdf"))
+
+doc.texts                      # ['...', '...']      plain strings
+doc[0]                         # SemanticChunk       one chunk
+doc[10:20]                     # list[SemanticChunk] a range
+len(doc)                       # how many
+doc.to_json("chunks.json")     # everything, with provenance
+doc.to_jsonl("chunks.jsonl")   # one object per line, for vector-store loaders
+```
+
+Each chunk carries its text, a stable id, word count, source document and format,
+per-chunk quality scores, and the boundaries that fell inside it — so you can see
+*why* a chunk ends where it does.
+
+### How the boundaries are decided
+
+Three stages. A Prolog rule base finds linguistically defensible boundaries,
+LaBSE scores how strongly two adjacent pieces discuss the same topic, and a
+bounded agglomerative merge combines them under a word limit.
+
+The rule base is the interesting part, because Sinhala is **SOV**: the final verb
+of a sentence is its ආඛ්‍යාතය (predicate), so a finite verb ending marks a
+sentence end far more reliably than punctuation, which Sinhala prose uses
+sparingly. The rules are grounded in a named grammar — *වියරණ විවරණ* (හෙ. ව.
+බිහේෂ් ඉන්දික සම්පත්, කැලණිය විශ්වවිද්‍යාලය, 2013) — and every rule and test
+cites the page it comes from, so a linguist can audit them without reading Python.
+
+They also encode what must **not** be split. `සහ`, `සමඟ`, `හා` and `ද` join
+phrases inside a single clause, so splitting at them orphans the verb from its
+subject: `පියා දරුවන් සමඟ වැඩ කරයි` is one thought, not two. The quotative `යි`
+gets the same protection — in `සතුරන් ගමට එතියි ඔවුහු බිය වූහ` it closes an
+embedded clause that belongs with its main clause.
+
+Choose sentence-level or clause-level boundaries:
+
+```python
+from akshara_kit import chunk, ChunkConfig, BoundaryKind
+
+chunk(result, config=ChunkConfig(level=BoundaryKind.CLAUSE, max_words=20))
+```
+
+### Spreadsheets are not prose
+
+A row is a record. Whitespace-tokenising a spreadsheet merges cells from
+unrelated rows into a chunk that reads like a sentence and describes two
+different things — worse than useless in a retrieval index, because it matches
+queries about either and answers about neither.
+
+So table rows are atomic: never split, never merged with a neighbour. One row is
+one chunk, cell structure intact. This happens automatically — `chunk()` reads
+`source_format` from the extraction result.
+
+### Preprocessing
+
+`chunk()` runs on whatever text you give it, but extracted text carries PDF
+layout scars — hard line wraps mid-sentence, page numbers, running headers, and
+stray zero-width characters. Clean it first:
+
+```python
+from akshara_kit import clean
+
+cleaned = clean(result.text)
+print(cleaned.stages)   # what each stage changed, for reporting
+```
+
+Zero-width handling is deliberately not a blanket strip. `ශ්‍ය` and `ක්‍ර` need
+their joiner — deleting it changes the word — so ZWJ is kept exactly where it
+forms one of those two conjuncts and removed everywhere else. ZWNJ is always
+removed; it has no role in Sinhala orthography and in extracted text is OCR
+emission.
+
+### System dependency: SWI-Prolog
+
+The rule base runs on a real Prolog engine, reached through the Machine Query
+Interface.
+
+1. Install **SWI-Prolog 9+** from <https://www.swi-prolog.org/download>.
+2. Install the extra: `uv sync --extra brain`
+3. Verify: `swipl --version`
+
+If SWI-Prolog is somewhere unusual, point the library at it with
+`AKSHARA_SWIPL_CMD=/full/path/to/swipl`.
+
+The `brain` extra also installs `sentence-transformers`, which pulls in torch.
+It is deliberately **not** part of `all` — the rule base and the merge run
+without it against any object with a `score(a, b) -> float` method, so you can
+supply your own scorer or a fine-tuned encoder:
+
+```python
+from akshara_kit.brain import LabseScorer
+
+chunk(result, scorer=LabseScorer("path/to/your-finetuned-labse"))
+```
 
 ## Multimodal fallback (opt-in)
 

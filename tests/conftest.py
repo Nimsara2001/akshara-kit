@@ -39,6 +39,26 @@ def pytest_collection_modifyitems(config, items) -> None:
             if "vlm" in item.keywords:
                 item.add_marker(skip_vlm)
 
+    if not capabilities.swipl_available():
+        skip_prolog = pytest.mark.skip(
+            reason=capabilities.describe_swipl_availability()
+        )
+        for item in items:
+            if "prolog" in item.keywords:
+                item.add_marker(skip_prolog)
+
+    # `labse` tests download and run a ~1.8 GB encoder. Skipped unless
+    # sentence-transformers is installed, so the default suite stays fast.
+    try:
+        import sentence_transformers  # noqa: F401
+    except ImportError:
+        skip_labse = pytest.mark.skip(
+            reason="sentence-transformers is not installed; install the 'brain' extra"
+        )
+        for item in items:
+            if "labse" in item.keywords:
+                item.add_marker(skip_labse)
+
 
 @pytest.fixture(scope="session")
 def fixtures_dir() -> pathlib.Path:

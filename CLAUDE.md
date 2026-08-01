@@ -26,7 +26,11 @@ here (Section 4).
 - U-Net visual layout analysis — stub only.
 - Agentic orchestration controller (cost-aware ReAct-style escalation) — the current
   scope uses a simpler deterministic router (Section 5), not a learned/agentic policy.
-- Any Brain-module code (chunking, Prolog rules, sentence embeddings).
+- ~~Any Brain-module code (chunking, Prolog rules, sentence embeddings)~~ —
+  **now implemented**, see Section 15. The Eye's output had no consumer, and the
+  interim report (§4.6, §6.5) specifies the Brain in more detail than this file
+  specifies parts of the Eye. Preprocessing came with it: extracted text carries
+  PDF layout scars that make chunking meaningless without cleanup.
 
 ---
 
@@ -149,6 +153,9 @@ tests/
 ├── test_ocr_decision.py
 ├── test_ocr_adapter.py
 ├── test_multimodal.py         # Section 14; providers stubbed, no network
+├── test_preprocess.py         # Section 15.1
+├── test_rule_engine.py        # Section 15.2; grammar-derived expectations
+├── test_chunk_coordinator.py  # Section 15.3-15.5; scorer stubbed, no torch
 ├── test_fixtures_current.py   # guards the fixtures against silent drift
 └── test_coordinator_integration.py
 ```
@@ -651,3 +658,116 @@ anything — see 14.1.
 Unlike the Tesseract probes, key lookup is deliberately **not** cached: a key can be
 exported between calls in a notebook or a test, and a cached `None` would be
 impossible to clear.
+---
+
+## 15. The Brain: Preprocessing & Neuro-Symbolic Chunking
+
+Files: `preprocess/*`, `brain/*`, `contracts/chunking.py`
+
+Realises interim report §4.6 and §6.5. Three stages: a Prolog rule base finds
+linguistically defensible boundaries (Algorithm 3), LaBSE supplies topic
+coherence (§6.5.3), and a bounded agglomerative merge combines them (Algorithm 4).
+
+### 15.1 Preprocessing comes first
+
+The Eye transcribes a page faithfully, which is not the same as producing prose.
+Measured on `output/sample_unicode.pdf.txt`: 8,401 lines for a few hundred
+paragraphs, 2,570 of them blank, 202 bare page numbers, 5,754 ZWNJ, 5,039 ZWJ,
+and text that is not NFC.
+
+The zero-width policy is the delicate part and is **not** a blanket strip:
+
+- **Keep** ZWJ in `් + ZWJ + ය|ර` — යංසය (ශ්‍ය) and රකාරාංශය (ක්‍ර). Deleting it
+  changes the word.
+- **Strip** every other ZWJ and **all** ZWNJ. ZWNJ has no role in Sinhala
+  orthography; here it is OCR emission after a hal kirima at word ends.
+
+De-wrapping uses the same sentence-end test the chunker uses, so wrapping and
+chunking cannot disagree about where a sentence ends.
+
+### 15.2 The rule base is grounded in a named grammar
+
+Every fact in `rules/sinhala_rules.pl` cites *වියරණ විවරණ* (හෙ. ව. බිහේෂ්
+ඉන්දික සම්පත්, කැලණිය විශ්වවිද්‍යාලය, 2013), §4 උක්ත ආඛ්‍යාත සම්බන්ධතා,
+pp. 89-112. Test expectations cite the same pages, so a linguist can audit the
+rules against the source without reading Python.
+
+The organising fact (p.89): Sinhala is **SOV**, so the *final verb* of a sentence
+is its ආඛ්‍යාතය. A finite verb ending is therefore a sentence boundary — a far
+stronger signal than punctuation, which Sinhala prose uses sparingly.
+
+Four tiers, kept separate because conflating them was the prototype's main flaw:
+
+| tier | predicate | examples |
+|---|---|---|
+| 1 | `sentence_terminator` | මි, මු, හි, හු, යි, ති, හ; the particle ය; වටී, මැනවි; `.` `?` `!` |
+| 2 | `clause_boundary` | ලා, මින්, ගොස්, ොත්, ද්දී, තත් — clause ends, **sentence continues** |
+| 3 | `discourse_connective` | නමුත්, එබැවින්, නිසා |
+| 4 | `never_split` | සහ, සමඟ, හා, ද, හෝ (pp.110-112) — these bind *within* a clause |
+
+Two rules do the heavy lifting:
+
+- **Quotative `යි` disambiguation.** `යි` is both the 3sg ending (කරයි) and the
+  quotative closing an අන්තර් වාක්‍යය (p.103, "සතුරන් ගමට එති’යි ඔවුහු බිය වූහ").
+  The grammar's discriminator: the quotative attaches to an already-finite form,
+  so strip it and ask whether the stem is itself finite.
+- **Pronouns are never sentence ends.** ඔහු, ඔවුහු and මොවුහු end in හු, the 2pl
+  verb ending; without the p.91 pronoun list, "ඔහු පාසල් ගියේ ය." splits after
+  ඔහු — the most damaging false positive available. Justified structurally: a
+  pronoun is an උක්ත or අනුක්ත, never a predicate.
+
+**Known limitation.** `-හි` and `-හු` are ambiguous between verb inflection and
+noun case marking (locative සමයෙහි, plural nominative සිත්තරහු). The closed lists
+above cover the high-frequency cases; open-class nouns still over-split, and
+separating them needs part-of-speech information this rule base does not have.
+
+`:- encoding(utf8).` at the top of the `.pl` file is load-bearing: without it the
+file consults cleanly but no Sinhala atom matches, silently degrading the whole
+rule base to punctuation-only splitting.
+
+### 15.3 The Prolog adapter
+
+`swiplserver` over the Machine Query Interface, per report Table 4.1 — not
+pyswip. Three fixes over the prototype: per-word queries are cached on the word
+(deterministic, so caching cannot change behaviour) rather than one socket round
+trip per token; lifecycle is a context manager rather than `__del__`; and the
+`.pl` is located with `importlib.resources` so it works from an installed wheel.
+
+`rule_tables.py` mirrors the rule base in Python, because preprocessing must run
+without SWI-Prolog. A parity test asserts the two agree on every fixture word, so
+drift is a test failure rather than quietly different chunking.
+
+### 15.4 Tabular data must not be blended
+
+The XLSX adapter emits one row per line with `\t` between cells. Whitespace-
+tokenising that merges cells from unrelated rows into one chunk that reads like a
+sentence and means nothing, and splits rows internally on incidental punctuation
+(the price cell `රු. 100` contains a full stop).
+
+So `segmenter.py` cuts text into atomic segments first. `TABLE_ROW` and
+`SHEET_HEADING` bypass both micro-chunking and the merge: one row is one record
+and becomes one chunk. `respect_table_rows=False` restores the naive behaviour
+for comparison.
+
+### 15.5 The merge and the output
+
+Algorithm 4 verbatim: **the length guardrail is checked before the coherence
+question**, so a self-similar passage cannot grow without bound. Note `max_words`
+bounds *merging*, not micro-chunks — a single sentence longer than the bound is
+emitted intact, because the alternative is cutting at an arbitrary word.
+
+The coordinator depends on a `CoherenceScorer` Protocol, not on LaBSE, so the
+merge is testable with a stub — no torch, no download, no network. This is also
+the seam §6.5.3 asks for: swapping in a fine-tuned encoder is a constructor
+argument.
+
+`ChunkedDocument` supports `len`, `doc[3]`, `doc[2:5]`, iteration, `.texts` for
+plain strings, and `to_json` / `to_jsonl`.
+
+### 15.6 Definition of done for the Brain
+
+- `route()` output chunks without the caller touching preprocessing by hand.
+- No chunk mixes cells from two spreadsheet rows.
+- Prolog and `rule_tables` agree on every word in the grammar-derived table.
+- The rule base loads its Sinhala atoms — asserted directly, since the failure is
+  otherwise silent.

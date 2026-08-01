@@ -88,6 +88,45 @@ def sinhala_ocr_available() -> bool:
     return SINHALA_LANG in tesseract_languages()
 
 
+#: Standard Windows install locations for SWI-Prolog, checked when PATH lookup
+#: fails — the installer does not always amend PATH.
+_WINDOWS_SWIPL_PATHS = (
+    r"C:\Program Files\swipl\bin\swipl.exe",
+    r"C:\Program Files (x86)\swipl\bin\swipl.exe",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def resolve_swipl_cmd() -> str | None:
+    """Locate the SWI-Prolog binary the Brain's rule engine needs.
+
+    Checks ``AKSHARA_SWIPL_CMD``, then ``PATH``, then the standard Windows
+    install directories. Returns the resolved path, or ``None``.
+    """
+    candidates = [
+        os.environ.get("AKSHARA_SWIPL_CMD"),
+        shutil.which("swipl"),
+        *_WINDOWS_SWIPL_PATHS,
+    ]
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
+
+
+@functools.lru_cache(maxsize=1)
+def swipl_available() -> bool:
+    """True if SWI-Prolog can be located."""
+    return resolve_swipl_cmd() is not None
+
+
+def describe_swipl_availability() -> str:
+    """A one-line, actionable explanation of the Prolog capability."""
+    if not swipl_available():
+        return (
+            "SWI-Prolog not found. Install it from https://www.swi-prolog.org/download, "
+            "or set AKSHARA_SWIPL_CMD to the full path of the swipl binary."
+        )
+    return f"SWI-Prolog is available at {resolve_swipl_cmd()}."
+
+
 @functools.lru_cache(maxsize=1)
 def poppler_available() -> bool:
     """True if poppler's ``pdftoppm`` is reachable.
