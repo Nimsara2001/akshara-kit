@@ -73,8 +73,16 @@ uv sync --extra all --group dev
 ```
 
 System dependency note: `pytesseract` requires the Tesseract OCR binary installed at
-the OS level (with the Sinhala `sin` language pack) and `pdf2image` requires `poppler-utils`.
-Add a note in `README.md` about installing these; do not attempt to pip-install them.
+the OS level, **with the Sinhala `sin` language pack** — `sin.traineddata` in the
+`tessdata` directory. Tesseract without that pack is the common failure mode: the
+binary resolves, so the library looks installed, but every Sinhala page silently
+returns nothing. `eye/capabilities.py` probes for the pack specifically and
+`describe_ocr_availability()` says which of the two is missing.
+
+Rasterisation goes through PyMuPDF, which is already a `pdf` dependency, so
+**poppler is not required**. The `pdf2image`/poppler path is retained behind
+`AKSHARA_RASTERISER=pdf2image` only. Add a note in `README.md` about installing
+these; do not attempt to pip-install them.
 
 ---
 
@@ -99,7 +107,7 @@ src/akshara_kit/
 │       ├── pdfplumber_adapter.py
 │       ├── pymupdf_adapter.py
 │       ├── pdfminer_adapter.py
-│       ├── ocr_adapter.py         # pytesseract + pdf2image
+│       ├── ocr_adapter.py         # pytesseract; rasterises via PyMuPDF
 │       ├── docx_adapter.py
 │       └── xlsx_adapter.py
 ├── eye/
@@ -107,9 +115,11 @@ src/akshara_kit/
 │   ├── quality_probe.py       # Section 7
 │   ├── font_detection.py      # Section 6
 │   ├── encoding_normaliser.py # Section 6.4 — pandukabhaya wrapper
-│   ├── ocr_decision.py        # Section 6.5
+│   ├── ocr_decision.py        # Section 8
 │   ├── pdf_coordinator.py     # multi-adapter race for PDF only
-│   └── coordinator.py         # top-level Eye Coordinator, dispatches by format
+│   ├── coordinator.py         # top-level Eye Coordinator, dispatches by format
+│   ├── capabilities.py        # cached probes for Tesseract / poppler
+│   └── errors.py              # the named exception hierarchy
 ├── multimodal/
 │   ├── __init__.py
 │   └── fallback.py            # STUB ONLY — raise NotImplementedError
@@ -119,6 +129,8 @@ src/akshara_kit/
 
 tests/
 ├── fixtures/                  # sample PDF/DOCX/XLSX files go here — see Section 9
+├── conftest.py                # shared fixtures; capability-based skipping
+├── samples.py                 # the shared sample strings tests assert on
 ├── test_format_router.py
 ├── test_pdf_adapters.py
 ├── test_docx_adapter.py
@@ -126,8 +138,17 @@ tests/
 ├── test_font_detection.py
 ├── test_encoding_normaliser.py
 ├── test_quality_probe.py
+├── test_ocr_decision.py
+├── test_ocr_adapter.py
+├── test_fixtures_current.py   # guards the fixtures against silent drift
 └── test_coordinator_integration.py
 ```
+
+Tests that need Tesseract carry the `ocr` marker and skip with an actionable
+message when the Sinhala pack is absent; `conftest.py` applies this. Because
+extraction is expensive — four backends per PDF, plus OCR for any page whose text
+layer is missing or garbled — the integration tests take their results from the
+session-scoped `routed` fixture rather than calling `route()` per test.
 
 ---
 
@@ -157,6 +178,7 @@ class QualityScore(BaseModel):
     raw_length: int
     sinhala_ratio: float
     region_coverage: float | None = None
+    orphan_vowel_rate: float = 0.0   # Section 7.1
 
 
 class ExtractionResult(BaseModel):
@@ -301,6 +323,35 @@ Used by the PDF coordinator to pick the best-scoring adapter output. DOCX/XLSX p
 still compute this score (store it on the result) but do not use it to choose between
 adapters, since there is only one deterministic path for those formats.
 
+### 7.1 Orthographic well-formedness (second signal)
+
+`sinhala_ratio` alone cannot detect a broken `ToUnicode` cmap: the extracted text
+is entirely Sinhala code points, just the *wrong* ones, so it scores well while
+reading as nonsense. Add a second measure, `orphan_vowel_rate`, on `QualityScore`.
+
+It relies on the strongest invariant Sinhala offers: a **dependent** vowel sign is
+by definition attached to a consonant, and Unicode always stores the consonant
+first. A vowel sign preceded by a space, digit or punctuation therefore has nothing
+to depend on and cannot be legitimate. The rate is orphaned signs \u00F7 consonants.
+
+Two guards keep it honest:
+
+- Text with fewer than 20 Sinhala consonants is never judged \u2014 below that the rate
+  is noise and one stray sign in a caption would condemn a page.
+- An **unconverted legacy glyph stream scores 0.0**, because it is Latin-1 bytes
+  and carries no Sinhala vowel signs to orphan. This measures *malformed* Sinhala,
+  not *absent* Sinhala. Without this property every legacy page would be sent to
+  OCR before conversion ever got a chance to fix it.
+
+Measured across the fixture corpus the two populations are an order of magnitude
+apart \u2014 correct extractions land at 0.0000\u20130.0023, garbled text layers at
+0.0297\u20130.0916 \u2014 so the threshold sits at 0.01.
+
+Ordering in `compare()` is: Sinhala ratio, then well-formedness (lower is better),
+then raw length. Well-formedness sits above length so more, wronger text cannot
+beat less, correcter text; it sits below ratio because an empty extraction is
+trivially well-formed.
+
 ---
 
 ## 8. OCR Decision (PDF only)
@@ -317,15 +368,38 @@ def needs_ocr(page, extracted_text: str, min_chars: int = 20) -> bool:
     """
 ```
 
-Logic: a page needs OCR if its extracted text length is below `min_chars` AND
-`page.get_images()` (PyMuPDF) shows at least one image covering a large fraction
-of the page area. Build this to operate per-page so a mixed document (some
-scanned pages, some born-digital) is handled correctly — do not make this an
-all-or-nothing decision at the document level.
+Logic: a page needs OCR if **either** of two independent conditions holds.
 
-When OCR is triggered for a page, use the `ocr_adapter.py` (pytesseract +
-pdf2image, with the Sinhala `sin` language pack) for that page only, and merge
-its output with the text-stream results from other pages in original page order.
+1. **Blank scan.** Its extracted text length is below `min_chars` AND
+   `page.get_image_info()` (PyMuPDF) shows an image covering a large fraction
+   of the page area. Note this is `get_image_info()`, not the `get_images()`
+   named in earlier drafts: `get_images()` returns the image's *pixel*
+   dimensions with no page geometry, so a 4000×3000 source placed in a 50pt
+   logo box reads as enormous. Only `get_image_info()` gives a page-space bbox.
+
+2. **Garbled text layer.** The page's text is present but orthographically
+   impossible Sinhala — see the well-formedness probe in Section 7. Sinhala
+   PDFs are routinely produced with a broken `ToUnicode` cmap, and every
+   text-stream backend then returns the same confident nonsense at a perfectly
+   healthy Sinhala ratio (`පොලී` → `පපොලී`, `යටතේ` → `යටපේ`). This arm carries
+   **no** image requirement, because a broken cmap is invisible to the
+   geometry test. Rasterising and OCRing the page recovers the real text.
+
+Condition 2 is a deliberate extension beyond this spec's original letter, added
+because the fixture corpus showed 160 of 180 pages of `sample_unicode.pdf`
+affected. It is controlled by `repair_malformed=True` on
+`pdf_coordinator.extract`; set it to `False` to restore condition 1 alone.
+
+Build this to operate per-page so a mixed document (some scanned pages, some
+born-digital) is handled correctly — do not make this an all-or-nothing
+decision at the document level.
+
+When OCR is triggered for a page, use the `ocr_adapter.py` (pytesseract, with
+the Sinhala `sin` language pack) for that page only, and merge its output with
+the text-stream results from other pages in original page order. The pages
+merged in must be the **normalised** per-page texts whenever legacy conversion
+applied — merging raw pages instead silently discards the conversion for any
+document needing both conversion and OCR.
 
 ---
 
@@ -338,9 +412,16 @@ Create `tests/fixtures/` with:
   available; if you cannot source one, create a synthetic test using mocked
   `fitz` span data instead, and note this clearly in the test file
 - `sample_scanned.pdf` — a rasterised/image-only page to exercise the OCR path
+- `sample_mixed.pdf` — one document combining a legacy-font region and a
+  Unicode region, so per-page and per-span routing are exercised together
 - `sample.docx` — a Word doc with at least one paragraph and one table, mixing
   a legacy-font run and a Unicode run in the same paragraph
 - `sample.xlsx` — a workbook with at least two sheets and some legacy-font cells
+
+Fixtures are drawn from real documents, so their properties are facts to be
+measured, not assumed. `test_fixtures_current.py` pins what each one actually
+contains; when a fixture is regenerated, re-measure before updating any test
+that asserts a page index or an OCR decision.
 
 Write tests for:
 
@@ -359,9 +440,15 @@ Write tests for:
 6. **XLSX adapter**: correctly extracts cell values across multiple sheets.
 7. **OCR decision**: correctly flags `sample_scanned.pdf`'s page as needing OCR
    and correctly does *not* flag a born-digital page.
-8. **Integration test**: full `route()` call against each of the five fixture
+8. **Integration test**: full `route()` call against each of the six fixture
    files, asserting a valid `ExtractionResult` with the expected `source_format`,
    plausible `quality.sinhala_ratio`, and correct `ocr_used` flag.
+9. **Well-formedness (Section 7.1)**: garbled text scores above the threshold,
+   correct text scores ~0, and an unconverted legacy stream scores 0 rather
+   than being mistaken for corruption.
+10. **Malformed-page repair (Section 8, condition 2)**: a page carrying garbled
+    text and no image is routed to OCR, and is not routed when
+    `repair_malformed=False`.
 
 Run with `uv run pytest --cov=akshara_kit` after each phase.
 
@@ -452,7 +539,7 @@ Add a module-level docstring note in `encoding_normaliser.py`:
 
 - `uv sync --extra all --group dev` succeeds from a clean clone.
 - `uv run pytest --cov=akshara_kit` passes with all tests green.
-- `route()` produces a valid `ExtractionResult` for all five fixture files.
+- `route()` produces a valid `ExtractionResult` for all six fixture files.
 - Calling the multimodal or layout-analyser stubs raises `NotImplementedError`
   with a clear message rather than failing silently or crashing ungracefully.
 - README.md documents: install instructions (including the Tesseract/poppler

@@ -16,7 +16,7 @@ from akshara_kit.contracts.extraction import (
     SourceFormat,
 )
 from akshara_kit.eye import capabilities
-from samples import ASCII_CONTROL, UNICODE_SINHALA, UNICODE_SINHALA_2
+from samples import ASCII_CONTROL, UNICODE_SINHALA
 
 pytestmark = pytest.mark.integration
 
@@ -32,9 +32,9 @@ EXPECTED_FORMATS = [
 
 @pytest.mark.parametrize(("name", "expected"), EXPECTED_FORMATS)
 def test_route_returns_a_valid_result(
-    fixtures_dir: pathlib.Path, name: str, expected: SourceFormat
+    routed, name: str, expected: SourceFormat
 ) -> None:
-    result = route(str(fixtures_dir / name))
+    result = routed(name)
     assert isinstance(result, ExtractionResult)
     assert result.source_format is expected
     assert result.backend_id
@@ -48,10 +48,8 @@ def test_route_returns_a_valid_result(
 @pytest.mark.parametrize(
     "name", ["sample_unicode.pdf", "sample.docx", "sample.xlsx", "sample_mixed.pdf"]
 )
-def test_documents_with_text_yield_plausible_sinhala(
-    fixtures_dir: pathlib.Path, name: str
-) -> None:
-    result = route(str(fixtures_dir / name))
+def test_documents_with_text_yield_plausible_sinhala(routed, name: str) -> None:
+    result = routed(name)
     assert result.quality.sinhala_ratio > 0.3, (
         f"{name} should be mostly Sinhala, got {result.quality.sinhala_ratio:.3f}"
     )
@@ -63,21 +61,17 @@ def test_documents_with_text_yield_plausible_sinhala(
 @pytest.mark.parametrize(
     "name", ["sample_legacy_font.pdf", "sample.docx", "sample.xlsx"]
 )
-def test_latin_text_is_never_corrupted_by_conversion(
-    fixtures_dir: pathlib.Path, name: str
-) -> None:
+def test_latin_text_is_never_corrupted_by_conversion(routed, name: str) -> None:
     """The prototype turned this exact URL into 'අඅඅගැාමචමඉගටදඩගකන'."""
-    result = route(str(fixtures_dir / name))
+    result = routed(name)
     assert result.font_detection_method is FontDetectionMethod.FONT_NAME
     assert ASCII_CONTROL in result.text
 
 
 @pytest.mark.parametrize("name", ["sample.docx", "sample.xlsx"])
-def test_existing_unicode_is_never_corrupted_by_conversion(
-    fixtures_dir: pathlib.Path, name: str
-) -> None:
+def test_existing_unicode_is_never_corrupted_by_conversion(routed, name: str) -> None:
     """Blanket conversion mangles correct Sinhala; span gating must not."""
-    result = route(str(fixtures_dir / name))
+    result = routed(name)
     assert UNICODE_SINHALA in result.text
 
 
@@ -99,31 +93,62 @@ def test_legacy_pdf_conversion_lifts_the_sinhala_ratio(
 # --- OCR routing ----------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "name", ["sample_unicode.pdf", "sample.docx", "sample.xlsx"]
-)
-def test_born_digital_documents_never_use_ocr(
-    fixtures_dir: pathlib.Path, name: str
-) -> None:
-    result = route(str(fixtures_dir / name))
+@pytest.mark.parametrize("name", ["sample.docx", "sample.xlsx"])
+def test_documents_without_pages_never_use_ocr(routed, name: str) -> None:
+    """OCR is a PDF-only leg; the container formats never reach it."""
+    result = routed(name)
+    assert not result.ocr_used
+    assert result.pages_ocred == []
+
+
+def test_clean_pdf_leaves_its_text_layer_alone(routed) -> None:
+    """The legacy fixture's text layer is sound, so nothing is re-read."""
+    result = routed("sample_legacy_font.pdf")
     assert not result.ocr_used
     assert result.pages_ocred == []
 
 
 @pytest.mark.ocr
-def test_scanned_pdf_uses_ocr(scanned_pdf: pathlib.Path) -> None:
-    result = route(str(scanned_pdf))
+def test_scanned_pdf_uses_ocr(routed) -> None:
+    result = routed("sample_scanned.pdf")
     assert result.ocr_used
-    assert result.pages_ocred == [0]
+    # Every page of this fixture is a rasterised image with no text layer.
+    assert result.pages_ocred == list(range(15))
     assert result.text.strip()
 
 
 @pytest.mark.ocr
-def test_mixed_pdf_ocrs_only_the_scanned_page(mixed_pdf: pathlib.Path) -> None:
-    """Per-page routing, and the merge keeps original page order."""
-    result = route(str(mixed_pdf))
-    assert result.pages_ocred == [1]
-    assert result.text.index(UNICODE_SINHALA_2) < len(result.text) // 2
+def test_garbled_text_layer_is_repaired_by_ocr(routed) -> None:
+    """The regression this whole path exists for.
+
+    Both pages of the mixed fixture carry a text layer produced from a broken
+    ToUnicode cmap. Left alone they extract as orthographically impossible
+    Sinhala; re-read through OCR they come back clean.
+    """
+    from akshara_kit.eye.quality_probe import MAX_ORPHAN_VOWEL_RATE
+
+    result = routed("sample_mixed.pdf")
+    assert result.ocr_used
+    assert result.quality.orphan_vowel_rate < MAX_ORPHAN_VOWEL_RATE
+
+
+def test_merged_page_texts_carry_the_legacy_conversion(
+    legacy_pdf: pathlib.Path,
+) -> None:
+    """Merging OCR pages must not undo the span conversion.
+
+    When any page is OCR'd the merged page texts replace the winner's text
+    wholesale, so rebuilding them from *raw* pages silently discards every
+    legacy conversion in a document that needs both. Asserted on the page
+    source directly, because a document that needs neither cannot show it.
+    """
+    from akshara_kit.eye.pdf_coordinator import _page_texts
+
+    pages = _page_texts(str(legacy_pdf), normalised=True)
+    assert pages is not None
+    joined = "".join(pages)
+    assert UNICODE_SINHALA in joined, "legacy spans should arrive converted"
+    assert "wOHdmk" not in joined, "raw legacy bytes should not survive"
 
 
 def test_scanned_pdf_degrades_gracefully_without_ocr(
@@ -140,9 +165,9 @@ def test_scanned_pdf_degrades_gracefully_without_ocr(
 # --- audit trail ----------------------------------------------------------
 
 
-def test_pdf_results_carry_the_full_attempt_history(unicode_pdf: pathlib.Path) -> None:
+def test_pdf_results_carry_the_full_attempt_history(routed) -> None:
     """Report Section 4.5's auditable extraction history."""
-    result = route(str(unicode_pdf))
+    result = routed("sample_unicode.pdf")
     assert len(result.attempts) == 4
     assert all(a.quality is not None for a in result.attempts if a.succeeded)
 

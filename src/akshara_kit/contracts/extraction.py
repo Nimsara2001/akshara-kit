@@ -40,12 +40,22 @@ class QualityScore(BaseModel):
     ``sinhala_ratio`` is the dominant signal: a well-formed Sinhala document is
     overwhelmingly composed of U+0D80–U+0DFF characters once legacy glyph
     streams have been normalised away.
+
+    ``orphan_vowel_rate`` is the second signal, and it catches what the first
+    cannot. A PDF with a broken ``ToUnicode`` cmap yields text that is entirely
+    Sinhala code points — a high ``sinhala_ratio`` — while being the *wrong*
+    Sinhala code points. Orthographic well-formedness separates the two.
     """
 
     raw_length: int
     sinhala_ratio: float
     region_coverage: float | None = None
     sample_tokens: list[str] = Field(default_factory=list)
+
+    #: Share of Sinhala consonants carrying a dependent vowel sign that has
+    #: nothing to attach to. ~0 for correct text, percent-level for a garbled
+    #: text layer. Additive beyond the frozen core contract.
+    orphan_vowel_rate: float = 0.0
 
 
 class AdapterAttempt(BaseModel):

@@ -10,13 +10,32 @@ with no page geometry. Coverage computed from those is wrong: a 4000x3000
 source image placed in a 50pt logo box would read as enormous.
 ``page.get_image_info()`` returns a page-space ``bbox`` per image and is the
 correct call.
+
+Two triggers, not one
+---------------------
+Section 8 routes a page to OCR when its text stream is *empty*. That misses the
+worse failure: a page whose text stream is full but wrong. Sinhala PDFs are
+routinely produced with a broken ``ToUnicode`` cmap, and every text-stream
+backend then returns the same confident nonsense — "පොලී" as "පපොලී", "යටතේ" as
+"යටපේ" — at a perfectly healthy Sinhala ratio. Rasterising and OCRing such a
+page recovers the real text, so a garbled text layer is a second, independent
+reason to OCR.
 """
 
 from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["MIN_CHARS", "MIN_IMAGE_COVERAGE", "PageLike", "image_area_fraction", "needs_ocr"]
+from akshara_kit.eye.quality_probe import MAX_ORPHAN_VOWEL_RATE, orphan_vowel_rate
+
+__all__ = [
+    "MIN_CHARS",
+    "MIN_IMAGE_COVERAGE",
+    "PageLike",
+    "image_area_fraction",
+    "is_malformed",
+    "needs_ocr",
+]
 
 #: A page with less text than this is a candidate for OCR.
 MIN_CHARS = 20
@@ -91,18 +110,41 @@ def image_area_fraction(page: PageLike) -> float:
     )
 
 
+def is_malformed(
+    extracted_text: str, max_orphan_rate: float = MAX_ORPHAN_VOWEL_RATE
+) -> bool:
+    """True if the text stream is Sinhala, but orthographically impossible.
+
+    Text with too little Sinhala to judge — including an unconverted legacy
+    glyph stream, which carries no Sinhala at all — is never malformed by this
+    measure. Only text that is plainly Sinhala *and* plainly broken qualifies.
+    """
+    return orphan_vowel_rate(extracted_text) > max_orphan_rate
+
+
 def needs_ocr(
     page: PageLike,
     extracted_text: str,
     min_chars: int = MIN_CHARS,
     min_image_coverage: float = MIN_IMAGE_COVERAGE,
+    *,
+    repair_malformed: bool = True,
 ) -> bool:
     """True if this page should be routed through OCR (Section 8).
 
-    Both conditions must hold: the text stream yielded almost nothing, *and*
-    the page is mostly covered by a single image. Text alone is not enough — a
-    genuinely blank page needs no OCR.
+    Either of two independent conditions routes a page to OCR:
+
+    1. The text stream yielded almost nothing *and* the page is mostly covered
+       by a single image — a scan. Text alone is not enough, since a genuinely
+       blank page has nothing for OCR to find.
+    2. The text stream is full but garbled, whatever the page looks like. A
+       broken cmap is invisible to the geometry test, so this arm carries no
+       image requirement.
+
+    Set ``repair_malformed=False`` to restore condition 1 alone.
     """
+    if repair_malformed and is_malformed(extracted_text):
+        return True
     if len(extracted_text.strip()) >= min_chars:
         return False
     return image_area_fraction(page) >= min_image_coverage

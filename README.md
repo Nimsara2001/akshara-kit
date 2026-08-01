@@ -13,11 +13,13 @@ from akshara_kit import route
 
 result = route("textbook.pdf")
 
-print(result.text)                    # Unicode Sinhala
-print(result.backend_id)              # which extractor won
-print(result.quality.sinhala_ratio)   # 0.0-1.0
-print(result.detected_legacy_fonts)   # e.g. ["FMAbhaya"]
-print(result.ocr_used)                # was any page OCR'd?
+print(result.text)                        # Unicode Sinhala
+print(result.backend_id)                  # which extractor won
+print(result.quality.sinhala_ratio)       # 0.0-1.0, how much Sinhala
+print(result.quality.orphan_vowel_rate)   # ~0.0 when the Sinhala is well-formed
+print(result.detected_legacy_fonts)       # e.g. ["FMAbhaya"]
+print(result.ocr_used)                    # was any page OCR'd?
+print(result.pages_ocred)                 # which pages, in document order
 ```
 
 `route()` accepts PDF, DOCX and XLSX. The format is decided by the file's structure, not its
@@ -65,9 +67,35 @@ empty, and a warning explains exactly what to install.
 
 | Format | Path |
 |---|---|
-| PDF | All four text-stream backends (pypdf, PyMuPDF, pdfplumber, pdfminer.six) run in parallel; each output is scored and the best is kept. Pages with no text layer are OCR'd individually and merged back in original page order. |
+| PDF | All four text-stream backends (pypdf, PyMuPDF, pdfplumber, pdfminer.six) run in parallel; each output is scored and the best is kept. Pages with no text layer — or a garbled one — are OCR'd individually and merged back in original page order. |
 | DOCX | python-docx, walking the document body so tables stay in reading order. Fonts resolved per run. |
 | XLSX | openpyxl, every non-empty cell of every sheet. Fonts resolved per cell. |
+
+### Broken text layers
+
+A surprising number of Sinhala PDFs carry a broken `ToUnicode` cmap: the page
+*renders* correctly, but the text underneath maps to the wrong code points. Every
+text-stream extractor then returns the same confident nonsense — `පොලී` comes out
+`පපොලී`, `යටතේ` comes out `යටපේ` — and because it is still entirely Sinhala
+characters, a character-range score cannot tell that anything is wrong.
+
+akshara-kit measures orthographic well-formedness alongside the Sinhala ratio. A
+dependent vowel sign must attach to a consonant, so vowel signs left stranded after
+a space are counted; correct text scores ~0.000, a garbled text layer scores in the
+percent range. Pages that fail this check are rasterised and OCR'd, which recovers
+the text the page actually displays, and merged back in document order.
+
+This costs roughly 1.5s per affected page. To turn it off and take the text layer
+as-is:
+
+```python
+from akshara_kit.eye import pdf_coordinator
+
+result = pdf_coordinator.extract("textbook.pdf", repair_malformed=False)
+```
+
+OCR must be available for the repair to happen. When it is not, the document still
+extracts and a warning names the affected pages.
 
 ### Legacy Sinhala conversion
 
@@ -108,6 +136,11 @@ uv run pytest --cov=akshara_kit --cov-report=term-missing
 Tests are hermetic: fixtures are committed, and no network or document corpus is needed.
 Tests requiring Tesseract are marked `ocr` and skip with an actionable message when the
 Sinhala pack is absent.
+
+The suite is slow when OCR is available, because the fixtures include real documents
+with broken text layers and repairing them means rasterising and re-reading a few
+hundred pages. Integration tests share one cached extraction per fixture; skip the
+OCR legs entirely with `-m "not ocr"` for a fast inner loop.
 
 ### Not yet implemented
 

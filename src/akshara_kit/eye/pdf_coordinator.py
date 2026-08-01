@@ -82,11 +82,17 @@ def extract(
     parallel: bool = True,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     use_ocr: bool = True,
+    repair_malformed: bool = True,
 ) -> ExtractionResult:
     """Extract a PDF's text, normalised to Sinhala Unicode.
 
     Implements Algorithm 1 with normalise-before-score. Raises
     :class:`ExtractionFailedError` if every adapter failed.
+
+    ``repair_malformed`` additionally re-reads pages whose text layer is
+    garbled — a broken ToUnicode cmap — through OCR. Set it to ``False`` to
+    trust the text layer unconditionally, which is faster but returns the
+    document's own corruption verbatim.
     """
     started = time.perf_counter()
     results, attempts = _sweep(
@@ -104,7 +110,9 @@ def extract(
             attempt.quality = candidates[attempt.backend_id].quality
 
     winner = _select(candidates)
-    winner = _apply_ocr(file_path, winner, enabled=use_ocr)
+    winner = _apply_ocr(
+        file_path, winner, enabled=use_ocr, repair_malformed=repair_malformed
+    )
 
     return ExtractionResult(
         text=winner.text,
@@ -334,23 +342,30 @@ def _raw_winner(candidates: dict[str, _Candidate]) -> str | None:
 # --- OCR ------------------------------------------------------------------
 
 
-def _apply_ocr(file_path: str, winner: _Candidate, *, enabled: bool) -> _Candidate:
-    """Replace pages that have no usable text stream with OCR output.
+def _apply_ocr(
+    file_path: str, winner: _Candidate, *, enabled: bool, repair_malformed: bool = True
+) -> _Candidate:
+    """Replace pages with no usable text stream — or a garbled one — with OCR.
 
     Merged back at the original page index, so a document mixing scanned and
     born-digital pages keeps its reading order. OCR output is Unicode Sinhala
     already, so it is never passed through legacy conversion.
+
+    The page texts are taken span-normalised whenever the span candidate won.
+    Rebuilding from raw pages instead would silently undo the legacy conversion
+    for every document that needs both conversion *and* OCR — the merged text
+    replaces the winner's wholesale, so whatever is merged is what survives.
     """
     if not enabled:
         return winner
 
     from akshara_kit.eye import capabilities
 
-    pages = _page_texts(file_path)
+    pages = _page_texts(file_path, normalised=winner.backend_id == SPAN_BACKEND_ID)
     if pages is None:
         return winner
 
-    needed = _pages_needing_ocr(file_path, pages)
+    needed = _pages_needing_ocr(file_path, pages, repair_malformed=repair_malformed)
     if not needed:
         return winner
 
@@ -383,8 +398,10 @@ def _apply_ocr(file_path: str, winner: _Candidate, *, enabled: bool) -> _Candida
     return winner
 
 
-def _page_texts(file_path: str) -> list[str] | None:
+def _page_texts(file_path: str, *, normalised: bool = False) -> list[str] | None:
     """Per-page text from PyMuPDF, or ``None`` if it is unavailable."""
+    if normalised:
+        return _normalised_page_texts(file_path)
     try:
         return pymupdf_adapter._extract_pages(file_path)
     except Exception as exc:  # noqa: BLE001 - OCR routing is best-effort
@@ -392,8 +409,39 @@ def _page_texts(file_path: str) -> list[str] | None:
         return None
 
 
-def _pages_needing_ocr(file_path: str, pages: list[str]) -> list[int]:
-    """Indices of pages whose text stream is empty and which look scanned."""
+def _normalised_page_texts(file_path: str) -> list[str] | None:
+    """Per-page text with each page's legacy spans converted.
+
+    Spans are grouped by the page tag ``iter_spans`` already puts in
+    ``location``, so this costs one pass over the document rather than one
+    ``open()`` per page.
+    """
+    from akshara_kit.eye.encoding_normaliser import normalise_spans
+
+    try:
+        total = pymupdf_adapter.page_count(file_path)
+        spans = list(pymupdf_adapter.iter_spans(file_path))
+    except Exception as exc:  # noqa: BLE001 - OCR routing is best-effort
+        logger.warning("per-page span text unavailable for %s: %s", file_path, exc)
+        return None
+
+    grouped: list[list] = [[] for _ in range(total)]
+    current = 0
+    for span in spans:
+        if span.location.startswith("p"):
+            try:
+                current = int(span.location[1:])
+            except ValueError:  # pragma: no cover - defensive
+                pass
+        if 0 <= current < total:
+            grouped[current].append(span)
+    return [normalise_spans(page_spans).text for page_spans in grouped]
+
+
+def _pages_needing_ocr(
+    file_path: str, pages: list[str], *, repair_malformed: bool = True
+) -> list[int]:
+    """Indices of pages that are blank scans, or whose text layer is garbled."""
     from akshara_kit.eye.ocr_decision import needs_ocr
 
     pymupdf = pymupdf_adapter._pymupdf()
@@ -402,7 +450,8 @@ def _pages_needing_ocr(file_path: str, pages: list[str]) -> list[int]:
             return [
                 index
                 for index, page in enumerate(document)
-                if index < len(pages) and needs_ocr(page, pages[index])
+                if index < len(pages)
+                and needs_ocr(page, pages[index], repair_malformed=repair_malformed)
             ]
     except Exception as exc:  # noqa: BLE001 - OCR routing is best-effort
         logger.warning("OCR decision unavailable for %s: %s", file_path, exc)

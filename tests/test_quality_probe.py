@@ -7,14 +7,24 @@ from akshara_kit.eye.quality_probe import (
     MIN_VIABLE_CHARS,
     compare,
     is_viable,
+    is_well_formed,
+    orphan_vowel_rate,
     score,
     sinhala_ratio,
 )
-from samples import ASCII_CONTROL, LEGACY_SINHALA, UNICODE_SINHALA
+from samples import (
+    ASCII_CONTROL,
+    GARBLED_CMAP_SINHALA,
+    LEGACY_SINHALA,
+    UNICODE_SINHALA,
+    WELL_FORMED_PARAGRAPH,
+)
 
 
-def q(ratio: float, length: int) -> QualityScore:
-    return QualityScore(raw_length=length, sinhala_ratio=ratio)
+def q(ratio: float, length: int, orphan: float = 0.0) -> QualityScore:
+    return QualityScore(
+        raw_length=length, sinhala_ratio=ratio, orphan_vowel_rate=orphan
+    )
 
 
 # --- the probe ------------------------------------------------------------
@@ -57,6 +67,53 @@ def test_sample_tokens_never_raise_on_odd_input() -> None:
     assert score("   ").sample_tokens == []
 
 
+# --- orthographic well-formedness -----------------------------------------
+#
+# The signal sinhala_ratio cannot provide. A PDF with a broken ToUnicode cmap
+# extracts as pure Sinhala code points at a healthy ratio, but the wrong ones.
+
+
+def test_correct_sinhala_has_no_orphan_vowels() -> None:
+    assert orphan_vowel_rate(WELL_FORMED_PARAGRAPH) == 0.0
+
+
+def test_garbled_cmap_text_has_orphan_vowels() -> None:
+    """Real text-layer output from a PDF whose cmap is wrong."""
+    assert orphan_vowel_rate(GARBLED_CMAP_SINHALA) > 0.01
+
+
+def test_garbled_text_still_scores_a_high_sinhala_ratio() -> None:
+    """Why the second signal is needed at all: the first cannot see this."""
+    assert sinhala_ratio(GARBLED_CMAP_SINHALA) > 0.5
+
+
+def test_unconverted_legacy_stream_is_not_judged_malformed() -> None:
+    """Legacy bytes carry no Sinhala, so there is nothing to orphan.
+
+    This measures malformed Sinhala, not absent Sinhala — otherwise every
+    pre-conversion legacy page would be sent to OCR needlessly.
+    """
+    assert orphan_vowel_rate(LEGACY_SINHALA) == 0.0
+
+
+def test_ascii_is_not_judged_malformed() -> None:
+    assert orphan_vowel_rate(ASCII_CONTROL) == 0.0
+
+
+def test_short_text_is_not_judged() -> None:
+    """Below the consonant floor one stray sign would condemn a caption."""
+    assert orphan_vowel_rate("ො ක") == 0.0
+
+
+def test_is_well_formed_separates_the_two_populations() -> None:
+    assert is_well_formed(score(WELL_FORMED_PARAGRAPH))
+    assert not is_well_formed(score(GARBLED_CMAP_SINHALA))
+
+
+def test_score_reports_the_rate() -> None:
+    assert score(GARBLED_CMAP_SINHALA).orphan_vowel_rate > 0.01
+
+
 # --- viability floor ------------------------------------------------------
 
 
@@ -80,6 +137,21 @@ def test_higher_sinhala_ratio_wins() -> None:
 def test_near_identical_ratios_are_treated_as_equal() -> None:
     """0.71 vs 0.715 is whitespace handling, not extraction quality."""
     assert compare(q(0.710, 1000), q(0.715, 1000)) == 0
+
+
+def test_well_formed_beats_garbled_at_equal_ratio() -> None:
+    """The ordering that lets a correct backend beat a corrupt one."""
+    assert compare(q(0.70, 1000, orphan=0.000), q(0.70, 1000, orphan=0.03)) > 0
+    assert compare(q(0.70, 1000, orphan=0.03), q(0.70, 1000, orphan=0.000)) < 0
+
+
+def test_well_formedness_outranks_length() -> None:
+    """More, wronger text must not beat less, correcter text."""
+    assert compare(q(0.70, 1000, orphan=0.0), q(0.70, 9000, orphan=0.05)) > 0
+
+
+def test_near_identical_orphan_rates_are_treated_as_equal() -> None:
+    assert compare(q(0.70, 1000, orphan=0.001), q(0.70, 1000, orphan=0.003)) == 0
 
 
 def test_length_breaks_a_ratio_tie() -> None:

@@ -34,6 +34,27 @@ def fixtures_dir() -> pathlib.Path:
 
 
 @pytest.fixture(scope="session")
+def routed(fixtures_dir: pathlib.Path):
+    """``route()`` a fixture once per session, then serve the cached result.
+
+    Extraction is expensive — four PDF backends per document, plus OCR for any
+    page whose text layer is missing or garbled — and the integration tests
+    read the same few results many times over. ``route`` is deterministic and
+    the results are never mutated, so caching changes nothing but the clock.
+    """
+    from akshara_kit import route
+
+    cache: dict[str, object] = {}
+
+    def _routed(name: str):
+        if name not in cache:
+            cache[name] = route(str(fixtures_dir / name))
+        return cache[name]
+
+    return _routed
+
+
+@pytest.fixture(scope="session")
 def unicode_pdf() -> pathlib.Path:
     return FIXTURES / "sample_unicode.pdf"
 

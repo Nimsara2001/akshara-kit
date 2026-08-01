@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 
 import pymupdf
 
-from akshara_kit.eye.ocr_decision import image_area_fraction, needs_ocr
+from akshara_kit.eye.ocr_decision import image_area_fraction, is_malformed, needs_ocr
+from samples import GARBLED_CMAP_SINHALA, LEGACY_SINHALA, WELL_FORMED_PARAGRAPH
 
 PAGE = (0.0, 0.0, 612.0, 792.0)
 
@@ -102,6 +103,45 @@ def test_thresholds_are_tunable() -> None:
     assert not needs_ocr(page, "", min_image_coverage=0.9)
 
 
+# --- the second trigger: a garbled text layer -----------------------------
+
+
+def test_garbled_text_layer_is_malformed() -> None:
+    assert is_malformed(GARBLED_CMAP_SINHALA)
+
+
+def test_correct_text_layer_is_not_malformed() -> None:
+    assert not is_malformed(WELL_FORMED_PARAGRAPH)
+
+
+def test_unconverted_legacy_text_is_not_malformed() -> None:
+    """Legacy bytes are not Sinhala yet, so they cannot be malformed Sinhala.
+
+    Without this, every legacy page would be OCR'd before conversion ever got
+    a chance to fix it.
+    """
+    assert not is_malformed(LEGACY_SINHALA)
+
+
+def test_full_page_of_garbled_text_needs_ocr_despite_having_no_image() -> None:
+    """A broken cmap is invisible to the geometry test, so it carries no
+    image requirement — this is the arm Section 8 as written does not have."""
+    assert needs_ocr(FakePage(), GARBLED_CMAP_SINHALA)
+
+
+def test_full_page_of_correct_text_does_not_need_ocr() -> None:
+    assert not needs_ocr(FakePage(), WELL_FORMED_PARAGRAPH)
+
+
+def test_malformed_repair_can_be_switched_off() -> None:
+    assert not needs_ocr(FakePage(), GARBLED_CMAP_SINHALA, repair_malformed=False)
+
+
+def test_switching_off_repair_leaves_the_scan_trigger_intact() -> None:
+    page = FakePage(images=[image(*PAGE)])
+    assert needs_ocr(page, "", repair_malformed=False)
+
+
 # --- against real PyMuPDF pages -------------------------------------------
 
 
@@ -111,14 +151,35 @@ def test_real_scanned_page_needs_ocr(scanned_pdf: pathlib.Path) -> None:
         assert needs_ocr(page, page.get_text())
 
 
-def test_real_born_digital_page_does_not_need_ocr(unicode_pdf: pathlib.Path) -> None:
-    with pymupdf.open(unicode_pdf) as doc:
-        page = doc[0]
+def test_real_born_digital_page_does_not_need_ocr(legacy_pdf: pathlib.Path) -> None:
+    """A page with a real text layer and no full-page image is left alone."""
+    with pymupdf.open(legacy_pdf) as doc:
+        page = doc[1]
         assert not needs_ocr(page, page.get_text())
 
 
-def test_mixed_document_decides_per_page(mixed_pdf: pathlib.Path) -> None:
-    """The point of Section 8: one document, two different answers."""
+def test_document_decides_per_page_not_per_document(unicode_pdf: pathlib.Path) -> None:
+    """The point of Section 8: one document, two different answers.
+
+    Page 0 is an image-only cover, so the scan arm fires; page 2 carries a
+    clean text layer, so nothing fires.
+    """
+    with pymupdf.open(unicode_pdf) as doc:
+        cover = needs_ocr(doc[0], doc[0].get_text())
+        clean = needs_ocr(doc[2], doc[2].get_text())
+    assert cover
+    assert not clean
+
+
+def test_real_garbled_pages_are_caught_only_by_the_malformed_arm(
+    mixed_pdf: pathlib.Path,
+) -> None:
+    """Both pages carry text and no image, so only condition 2 can see them.
+
+    This is the case Section 8's original single condition misses entirely.
+    """
     with pymupdf.open(mixed_pdf) as doc:
-        decisions = [needs_ocr(page, page.get_text()) for page in doc]
-    assert decisions == [False, True]
+        with_repair = [needs_ocr(p, p.get_text()) for p in doc]
+        without = [needs_ocr(p, p.get_text(), repair_malformed=False) for p in doc]
+    assert with_repair == [True, True]
+    assert without == [False, False]
