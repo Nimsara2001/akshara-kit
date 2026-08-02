@@ -1,0 +1,349 @@
+% =====================================================================
+% References for the Interim Progress Review Report
+% An Intelligent Framework for Text Extraction and Semantic Chunking
+% in Sinhala Documents
+% IEEE referencing style (ieeetr)
+% =====================================================================
+
+% --- Sinhala-specific prior work (from the project proposal) ---
+
+@misc{wickramasinghe2024unet,
+  author       = {Wickramasinghe, S. and Perera, D.},
+  title        = {An Enhanced {U-Net}-based Approach for {Sinhala} Document Layout Analysis},
+  year         = {2024},
+  howpublished = {ResearchGate},
+  note         = {Available: \url{https://www.researchgate.net/}}
+}
+
+@article{herath2021sinhala,
+  author  = {Herath, A. and Jayalal, S.},
+  title   = {{Sinhala} Document {OCR}: A Survey of Challenges and Solutions},
+  journal = {arXiv preprint arXiv:2109.05952},
+  year    = {2021}
+}
+
+@misc{pathirana2025sinmorphy,
+  author       = {Pathirana, D.},
+  title        = {{SinMorphy}: A Morphological Analyzer for the {Sinhala} Language},
+  year         = {2025},
+  howpublished = {ResearchGate}
+}
+
+@misc{webapps2025converter,
+  author       = {{WebApps Ltd.}},
+  title        = {{Sinhala} Unicode Converter Documentation},
+  year         = {2025},
+  howpublished = {pub.dev}
+}
+
+@misc{unstract2024pdfhell,
+  author       = {{Unstract}},
+  title        = {{PDF} Hell and Practical {RAG} Applications},
+  year         = {2024},
+  howpublished = {Unstract Blog},
+  note         = {Available: \url{https://unstract.com/blog/}}
+}
+
+@misc{ruwanpathirana2015sentence,
+  author       = {Ruwanpathirana, A.},
+  title        = {Sentence Boundary Detection without Speech Recognition},
+  year         = {2015},
+  howpublished = {ResearchGate}
+}
+
+% --- Foundational LLM, RAG and Transformer references ---
+
+@inproceedings{vaswani2017attention,
+  author    = {Vaswani, A. and Shazeer, N. and Parmar, N. and Uszkoreit, J. and Jones, L. and Gomez, A. N. and Kaiser, L. and Polosukhin, I.},
+  title     = {Attention Is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {30},
+  pages     = {5998--6008},
+  year      = {2017}
+}
+
+@inproceedings{devlin2019bert,
+  author    = {Devlin, J. and Chang, M.-W. and Lee, K. and Toutanova, K.},
+  title     = {{BERT}: Pre-training of Deep Bidirectional Transformers for Language Understanding},
+  booktitle = {Proc. 2019 Conf. of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT)},
+  pages     = {4171--4186},
+  year      = {2019}
+}
+
+@inproceedings{lewis2020rag,
+  author    = {Lewis, P. and Perez, E. and Piktus, A. and Petroni, F. and Karpukhin, V. and Goyal, N. and K\"{u}ttler, H. and Lewis, M. and Yih, W. and Rockt\"{a}schel, T. and Riedel, S. and Kiela, D.},
+  title     = {Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  pages     = {9459--9474},
+  year      = {2020}
+}
+
+@inproceedings{reimers2019sbert,
+  author    = {Reimers, N. and Gurevych, I.},
+  title     = {{Sentence-BERT}: Sentence Embeddings using {Siamese BERT}-Networks},
+  booktitle = {Proc. 2019 Conf. on Empirical Methods in Natural Language Processing (EMNLP-IJCNLP)},
+  pages     = {3982--3992},
+  year      = {2019}
+}
+
+@inproceedings{feng2022labse,
+  author    = {Feng, F. and Yang, Y. and Cer, D. and Arivazhagan, N. and Wang, W.},
+  title     = {Language-agnostic {BERT} Sentence Embedding},
+  booktitle = {Proc. 60th Annual Meeting of the Association for Computational Linguistics (ACL)},
+  pages     = {878--891},
+  year      = {2022}
+}
+
+% --- OCR and document processing engines ---
+
+@inproceedings{smith2007tesseract,
+  author    = {Smith, R.},
+  title     = {An Overview of the {Tesseract} {OCR} Engine},
+  booktitle = {Proc. Ninth Int. Conf. on Document Analysis and Recognition (ICDAR)},
+  volume    = {2},
+  pages     = {629--633},
+  year      = {2007}
+}
+
+@inproceedings{ronneberger2015unet,
+  author    = {Ronneberger, O. and Fischer, P. and Brox, T.},
+  title     = {{U-Net}: Convolutional Networks for Biomedical Image Segmentation},
+  booktitle = {Proc. Int. Conf. on Medical Image Computing and Computer-Assisted Intervention (MICCAI)},
+  pages     = {234--241},
+  year      = {2015}
+}
+
+% --- Layout analysis and chunking strategies in modern RAG stacks ---
+
+@misc{langchain2024,
+  author       = {{LangChain}},
+  title        = {{LangChain} Documentation: Text Splitters and Document Loaders},
+  year         = {2024},
+  howpublished = {Online},
+  note         = {Available: \url{https://python.langchain.com/}}
+}
+
+@misc{llamaindex2024,
+  author       = {{LlamaIndex}},
+  title        = {{LlamaIndex} Documentation: Data Connectors and Node Parsers},
+  year         = {2024},
+  howpublished = {Online},
+  note         = {Available: \url{https://docs.llamaindex.ai/}}
+}
+
+% --- Document layout analysis: classical and deep-learning-based ---
+
+@inproceedings{ren2015fasterrcnn,
+  author    = {Ren, S. and He, K. and Girshick, R. and Sun, J.},
+  title     = {{Faster R-CNN}: Towards Real-Time Object Detection with Region Proposal Networks},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {28},
+  pages     = {91--99},
+  year      = {2015}
+}
+
+@inproceedings{he2017maskrcnn,
+  author    = {He, K. and Gkioxari, G. and Doll{\'a}r, P. and Girshick, R.},
+  title     = {{Mask R-CNN}},
+  booktitle = {Proc. IEEE Int. Conf. on Computer Vision (ICCV)},
+  pages     = {2961--2969},
+  year      = {2017}
+}
+
+@inproceedings{zhong2019publaynet,
+  author    = {Zhong, X. and Tang, J. and Yepes, A. J.},
+  title     = {{PubLayNet}: Largest Dataset Ever for Document Layout Analysis},
+  booktitle = {Proc. Int. Conf. on Document Analysis and Recognition (ICDAR)},
+  pages     = {1015--1022},
+  year      = {2019}
+}
+
+@inproceedings{pfitzmann2022doclaynet,
+  author    = {Pfitzmann, B. and Auer, C. and Dolfi, M. and Nassar, A. S. and Staar, P. W. J.},
+  title     = {{DocLayNet}: A Large Human-Annotated Dataset for Document-Layout Segmentation},
+  booktitle = {Proc. 28th ACM SIGKDD Conf. on Knowledge Discovery and Data Mining (KDD)},
+  pages     = {3743--3751},
+  year      = {2022}
+}
+
+% --- Document understanding transformers ---
+
+@inproceedings{xu2020layoutlm,
+  author    = {Xu, Y. and Li, M. and Cui, L. and Huang, S. and Wei, F. and Zhou, M.},
+  title     = {{LayoutLM}: Pre-training of Text and Layout for Document Image Understanding},
+  booktitle = {Proc. 26th ACM SIGKDD Int. Conf. on Knowledge Discovery and Data Mining (KDD)},
+  pages     = {1192--1200},
+  year      = {2020}
+}
+
+@inproceedings{xu2021layoutlmv2,
+  author    = {Xu, Y. and Xu, Y. and Lv, T. and Cui, L. and Wei, F. and Wang, G. and Lu, Y. and Florencio, D. and Zhang, C. and Che, W. and Zhang, M. and Zhou, L.},
+  title     = {{LayoutLMv2}: Multi-modal Pre-training for Visually-Rich Document Understanding},
+  booktitle = {Proc. 59th Annual Meeting of the Association for Computational Linguistics (ACL)},
+  pages     = {2579--2591},
+  year      = {2021}
+}
+
+@inproceedings{huang2022layoutlmv3,
+  author    = {Huang, Y. and Lv, T. and Cui, L. and Lu, Y. and Wei, F.},
+  title     = {{LayoutLMv3}: Pre-training for Document {AI} with Unified Text and Image Masking},
+  booktitle = {Proc. 30th ACM Int. Conf. on Multimedia (MM)},
+  pages     = {4083--4091},
+  year      = {2022}
+}
+
+@inproceedings{li2022dit,
+  author    = {Li, J. and Xu, Y. and Lv, T. and Cui, L. and Zhang, C. and Wei, F.},
+  title     = {{DiT}: Self-supervised Pre-training for Document Image Transformer},
+  booktitle = {Proc. 30th ACM Int. Conf. on Multimedia (MM)},
+  pages     = {3530--3539},
+  year      = {2022}
+}
+
+@inproceedings{kim2022donut,
+  author    = {Kim, G. and Hong, T. and Yim, M. and Nam, J. and Park, J. and Yim, J. and Hwang, W. and Yun, S. and Han, D. and Park, S.},
+  title     = {{OCR}-free Document Understanding Transformer},
+  booktitle = {Proc. European Conf. on Computer Vision (ECCV)},
+  pages     = {498--517},
+  year      = {2022}
+}
+
+% --- OCR engines beyond Tesseract ---
+
+@inproceedings{li2023trocr,
+  author    = {Li, M. and Lv, T. and Chen, J. and Cui, L. and Lu, Y. and Florencio, D. and Zhang, C. and Li, Z. and Wei, F.},
+  title     = {{TrOCR}: Transformer-Based Optical Character Recognition with Pre-trained Models},
+  booktitle = {Proc. AAAI Conf. on Artificial Intelligence},
+  volume    = {37},
+  number    = {11},
+  pages     = {13094--13102},
+  year      = {2023}
+}
+
+@misc{du2020paddleocr,
+  author       = {Du, Y. and Li, C. and Guo, R. and Cui, C. and Liu, W. and Zhou, J. and Lu, B. and Yang, Y. and Liu, Q. and Hu, X.},
+  title        = {{PP-OCR}: A Practical Ultra Lightweight {OCR} System},
+  year         = {2020},
+  howpublished = {arXiv preprint arXiv:2009.09941}
+}
+
+% --- Multilingual encoders and dense retrieval ---
+
+@inproceedings{conneau2020xlmr,
+  author    = {Conneau, A. and Khandelwal, K. and Goyal, N. and Chaudhary, V. and Wenzek, G. and Guzm{\'a}n, F. and Grave, E. and Ott, M. and Zettlemoyer, L. and Stoyanov, V.},
+  title     = {Unsupervised Cross-lingual Representation Learning at Scale},
+  booktitle = {Proc. 58th Annual Meeting of the Association for Computational Linguistics (ACL)},
+  pages     = {8440--8451},
+  year      = {2020}
+}
+
+@inproceedings{karpukhin2020dpr,
+  author    = {Karpukhin, V. and O\u{g}uz, B. and Min, S. and Lewis, P. and Wu, L. and Edunov, S. and Chen, D. and Yih, W.},
+  title     = {Dense Passage Retrieval for Open-Domain Question Answering},
+  booktitle = {Proc. 2020 Conf. on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {6769--6781},
+  year      = {2020}
+}
+
+@inproceedings{khattab2020colbert,
+  author    = {Khattab, O. and Zaharia, M.},
+  title     = {{ColBERT}: Efficient and Effective Passage Search via Contextualized Late Interaction over {BERT}},
+  booktitle = {Proc. 43rd Int. ACM SIGIR Conf. on Research and Development in Information Retrieval},
+  pages     = {39--48},
+  year      = {2020}
+}
+
+% --- Neuro-symbolic and chunking strategy references ---
+
+@article{garcez2022neurosymbolic,
+  author  = {Garcez, A. d'A. and Lamb, L. C.},
+  title   = {Neurosymbolic {AI}: The 3rd Wave},
+  journal = {Artificial Intelligence Review},
+  volume  = {56},
+  pages   = {12387--12406},
+  year    = {2023}
+}
+
+@misc{kamradt2024chunking,
+  author       = {Kamradt, G.},
+  title        = {The 5 Levels of Text Splitting for Retrieval},
+  year         = {2024},
+  howpublished = {Online tutorial},
+  note         = {Available: \url{https://github.com/FullStackRetrieval-com/RetrievalTutorials}}
+}
+
+% --- Logic programming and symbolic reasoning ---
+
+@article{wielemaker2012swiprolog,
+  author  = {Wielemaker, J. and Schrijvers, T. and Triska, M. and Lager, T.},
+  title   = {{SWI-Prolog}},
+  journal = {Theory and Practice of Logic Programming},
+  volume  = {12},
+  number  = {1-2},
+  pages   = {67--96},
+  year    = {2012}
+}
+
+@article{kowalski1974predicate,
+  author  = {Kowalski, R.},
+  title   = {Predicate Logic as Programming Language},
+  journal = {Information Processing},
+  volume  = {74},
+  pages   = {569--574},
+  year    = {1974}
+}
+
+% --- Foundational deep-learning architectures cited in technology chapter ---
+
+@inproceedings{lecun1989backprop,
+  author    = {LeCun, Y. and Boser, B. and Denker, J. S. and Henderson, D. and Howard, R. E. and Hubbard, W. and Jackel, L. D.},
+  title     = {Backpropagation Applied to Handwritten Zip Code Recognition},
+  booktitle = {Neural Computation},
+  volume    = {1},
+  number    = {4},
+  pages     = {541--551},
+  year      = {1989}
+}
+
+@inproceedings{long2015fcn,
+  author    = {Long, J. and Shelhamer, E. and Darrell, T.},
+  title     = {Fully Convolutional Networks for Semantic Segmentation},
+  booktitle = {Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {3431--3440},
+  year      = {2015}
+}
+
+@inproceedings{hochreiter1997lstm,
+  author    = {Hochreiter, S. and Schmidhuber, J.},
+  title     = {Long Short-Term Memory},
+  booktitle = {Neural Computation},
+  volume    = {9},
+  number    = {8},
+  pages     = {1735--1780},
+  year      = {1997}
+}
+
+% --- Agentic AI and tool-using language models ---
+
+@inproceedings{yao2023react,
+  author    = {Yao, S. and Zhao, J. and Yu, D. and Du, N. and Shafran, I. and Narasimhan, K. and Cao, Y.},
+  title     = {{ReAct}: Synergizing Reasoning and Acting in Language Models},
+  booktitle = {Proc. Int. Conf. on Learning Representations (ICLR)},
+  year      = {2023}
+}
+
+@inproceedings{schick2023toolformer,
+  author    = {Schick, T. and Dwivedi-Yu, J. and Dess{\`i}, R. and Raileanu, R. and Lomeli, M. and Zettlemoyer, L. and Cancedda, N. and Scialom, T.},
+  title     = {{Toolformer}: Language Models Can Teach Themselves to Use Tools},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {36},
+  year      = {2023}
+}
+
+@misc{google2024gemini,
+  author       = {{Google DeepMind}},
+  title        = {{Gemini}: A Family of Highly Capable Multimodal Models},
+  year         = {2024},
+  howpublished = {arXiv preprint arXiv:2312.11805}
+}
