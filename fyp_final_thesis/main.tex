@@ -48,6 +48,9 @@
 \usepackage{tabularx}
 \usepackage{enumitem}
 \usepackage{float}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{makecell}
 
 % Formatting Table and Figure captions
 \captionsetup[table]{name=Table, labelsep=colon}
@@ -147,7 +150,7 @@ The completion of this interim phase of the research project would not have been
 
 The rapid advancement of Generative Artificial Intelligence and large language models relies heavily on robust data ingestion pipelines that support Retrieval-Augmented Generation and autonomous agentic applications. Standard text processing tools, however, are optimised for English and perform poorly on morphologically rich, under-resourced languages such as Sinhala. The critical research gap lies in the inability of current frameworks to preserve semantic integrity during text extraction and chunking. The agglutinative structure of Sinhala means that a single word often carries the semantic weight of a complete English phrase; token-based chunking algorithms therefore sever these complex words and split sentences mid-thought, destroying the linguistic context required for accurate vector embeddings. The problem is further compounded by multi-column layouts and non-Unicode legacy fonts, creating a fragmented landscape that prevents the reliable automated ingestion of Sinhala documents.
 
-To address this bottleneck, this research proposes a Hybrid Intelligent Framework for Sinhala Text Ingestion, built on an Extract-Convert-Chunk architecture. The central hypothesis is that integrating visual layout analysis with rule-based morphological segmentation will significantly reduce data-fragmentation errors compared with fixed-size token chunking, thereby improving the semantic coherence of the resulting vector embeddings. The framework accepts unstructured digital documents with mixed font encodings as input and processes them through two interconnected modules. A Layout-Aware Extraction module couples a layout-detection model with a multimodal fallback to establish the correct reading order, together with a normalisation sub-layer that converts legacy Sinhala fonts to standard Unicode. An Intelligent Semantic Chunking module then combines Sinhala-specific linguistic rules for sentence-boundary detection with a sliding-window approach that uses a lightweight multilingual embedding model to group adjacent sentences by topic similarity. The final outputs are semantically coherent, machine-readable text chunks enriched with layout metadata and ready for direct use as knowledge-base entries.
+To address this bottleneck, this research proposes a Hybrid Intelligent Framework for Sinhala Text Ingestion, built on an Extract-Convert-Chunk architecture. The central hypothesis is that integrating visual layout analysis with rule-based morphological segmentation will significantly reduce data-fragmentation errors compared with fixed-size token chunking, thereby improving the semantic coherence of the resulting vector embeddings. The framework accepts unstructured digital documents with mixed font encodings as input and processes them through two interconnected modules. An Extraction module races multiple text-stream back-ends against a Sinhala-aware quality signal, escalates a page to optical character recognition and, as a consent-gated last resort, to a multimodal vision-language fallback when the text layer is missing or orthographically malformed, together with a normalisation sub-layer that converts legacy Sinhala fonts to standard Unicode. An Intelligent Semantic Chunking module then combines Sinhala-specific linguistic rules for sentence-boundary detection with a multilingual embedding model that groups adjacent chunks by topic similarity under a bounded agglomerative merge. The final outputs are semantically coherent, machine-readable text chunks ready for direct use as knowledge-base entries.
 
 This work constitutes a theoretical extension of the standard natural language processing ingestion pipeline through a linguistically aware, multimodal layer tailored for agglutinative, under-resourced languages, positioning it within the artificial intelligence body of knowledge concerning data standardisation for large language models. The completed framework couples a multi-backend extraction harness, an orthographic well-formedness probe that detects broken font-encoding maps invisible to a simple character-range check, a consent-gated multimodal vision-language fallback, and a hybrid semantic chunker that fuses a grammar-grounded Prolog rule engine with a Sinhala fine-tuned multilingual sentence encoder. The fine-tuned encoder was evaluated against its base counterpart on a held-out coherent-versus-hard-negative sentence-pair task and raised the area under the receiver operating characteristic curve from 0.7269 to 0.8832, a statistically significant improvement whose bootstrap ninety-five percent confidence interval excludes zero. When embedded in a Retrieval-Augmented Generation pipeline and evaluated against a standard fixed-size extraction-and-chunking baseline, the framework produced measurably more coherent chunks and higher retrieval and answer-faithfulness scores. These results support the central hypothesis that jointly preserving layout, encoding, and morphological structure during ingestion yields a demonstrably better foundation for Sinhala Retrieval-Augmented Generation than pipelines built for high-resource languages, contributing a robust, reproducible, and empirically validated solution that enhances the reliability of Sinhala artificial intelligence systems.
 
@@ -265,7 +268,7 @@ The research draws on the following hardware, software, and data resources. The 
 
 \section{Structure of the Thesis}
 \label{sec:thesis-structure}
-The remainder of this report is organised as follows. Chapter 2 (Literature Review) surveys prior work in Document Layout Analysis, OCR for Sinhala, legacy-encoding conversion, and morphology-aware semantic chunking, and defines the research gap. Chapter 3 (Foundational Technologies) studies the architectures and algorithms on which the framework draws and justifies each technology choice. Chapter 4 (Approach) presents the conceptual blueprint of the Extract-Convert-Chunk methodology together with the inputs, outputs, and processes of the Eye and Brain modules. Chapter 5 (Analysis and Design) translates the conceptual approach into a concrete system architecture. Chapter 6 (Implementation) describes the algorithmic flow of each component using pseudocode and a flowchart, and reports the implementation progress to date.
+The remainder of this report is organised as follows. Chapter 2 (Literature Review) surveys prior work in Document Layout Analysis, OCR for Sinhala, legacy-encoding conversion, and morphology-aware semantic chunking, and defines the research gap. Chapter 3 (Foundational Technologies) studies the architectures and algorithms on which the framework draws and justifies each technology choice. Chapter 4 (Approach) presents the conceptual blueprint of the Extract-Convert-Chunk methodology together with the inputs, outputs, and processes of the Eye and Brain modules. Chapter 5 (Analysis and Design) translates the conceptual approach into a concrete system architecture. Chapter 6 (Implementation) describes the algorithmic flow of each component using pseudocode and a flowchart, and reports the implementation actually realised. Chapter 7 (Evaluation) reports the extraction-accuracy, chunking-coherence, and end-to-end Retrieval-Augmented Generation results that test the research hypothesis. Chapter 8 (Conclusion and Further Work) assesses the achievement of each research objective, states this thesis's contributions and limitations, and proposes further work.
 
 \section{Summary}
 \label{sec:ch1-summary}
@@ -412,7 +415,7 @@ The Sinhala-character ratio alone cannot detect the single most damaging Sinhala
 \label{sec:tech-unet}
 The U-Net \cite{ronneberger2015unet} is a fully convolutional encoder-decoder neural network in which the encoder progressively halves the spatial resolution while doubling the feature depth, the decoder up-samples the feature maps back to the original resolution, and skip connections from each encoder level to the corresponding decoder level re-inject the fine-grained spatial information lost during down-sampling. The architecture traces a direct lineage from convolutional networks for digit recognition \cite{lecun1989backprop} and fully convolutional networks for semantic segmentation \cite{long2015fcn}. Its distinguishing symmetric expansive path with skip connections is well suited to documents, because thin structural separators (column gutters, table grid lines, footnote rules) are easily lost in deeper, non-symmetric architectures.
 
-The principal strengths of U-Net for the Sinhala document-layout problem are parameter efficiency (allowing training and inference on modest GPU resources), robust performance with comparatively small annotated datasets, and the demonstration by Wickramasinghe and Perera \cite{wickramasinghe2024unet} that a Sinhala-tuned U-Net successfully segments document regions. Its principal limitations are that the architecture is purely visual, yielding region masks rather than textual content and therefore requiring downstream text-stream reconstruction, and that fine-tuning requires a labelled corpus of Sinhala layouts that was not available within the scope of the present implementation. For this reason the visual layout analyser is retained in this thesis as a studied, architecturally reserved technology rather than an integrated one: the library exposes a stub with the same adapter contract as the operational extractors (Section~\ref{sec:impl-forthcoming}) so that it can be registered without further architectural change once trained, but no U-Net segmentation runs in the framework as implemented. In its place, the multi-backend text-stream harness and, for pages that defeat text-stream extraction and OCR entirely, a multimodal vision-language fallback in which a pre-trained image-to-sequence model, in the spirit of LayoutLMv3 \cite{huang2022layoutlmv3} and Donut \cite{kim2022donut}, transcribes the visual content directly into text, together substitute for true visual layout understanding in the current system. Unlike the layout analyser, the multimodal fallback \textit{is} fully implemented and integrated; its consent-gated, last-resort design is elaborated in Section~\ref{sec:tech-multimodal} and Chapter~\ref{ch:approach}.
+The principal strengths of U-Net for the Sinhala document-layout problem are parameter efficiency (allowing training and inference on modest GPU resources), robust performance with comparatively small annotated datasets, and the demonstration by Wickramasinghe and Perera \cite{wickramasinghe2024unet} that a Sinhala-tuned U-Net successfully segments document regions. Its principal limitations are that the architecture is purely visual, yielding region masks rather than textual content and therefore requiring downstream text-stream reconstruction, and that fine-tuning requires a labelled corpus of Sinhala layouts that was not available within the scope of the present implementation. For this reason the visual layout analyser is retained in this thesis as a studied, architecturally reserved technology rather than an integrated one: the library exposes a stub with the same adapter contract as the operational extractors (Section~\ref{sec:impl-forthcoming}) so that it can be registered without further architectural change once trained, but no U-Net segmentation runs in the framework as implemented. In its place, the multi-backend text-stream harness and, for pages that defeat text-stream extraction and OCR entirely, a multimodal vision-language model (VLM) fallback in which a pre-trained image-to-sequence model, in the spirit of LayoutLMv3 \cite{huang2022layoutlmv3} and Donut \cite{kim2022donut}, transcribes the visual content directly into text, together substitute for true visual layout understanding in the current system. Unlike the layout analyser, the multimodal fallback \textit{is} fully implemented and integrated; its consent-gated, last-resort design is elaborated in Section~\ref{sec:tech-multimodal} and Chapter~\ref{ch:approach}.
 
 \subsection{The Multimodal Fallback as a Last-Resort, Consent-Gated Path}
 \label{sec:tech-multimodal}
@@ -575,11 +578,11 @@ Structured chunk output with layout metadata & Output layer & Schema-validated m
 \label{sec:approach-gap-map}
 The processes described above logically address the three research gaps formalised in Chapter~\ref{ch:literature}. Gap G1 (no unified ingestion pipeline) is addressed by the entire Extract-Convert-Chunk architecture, in which extraction, encoding conversion, and chunking are orchestrated within a single library rather than as siloed tools. Gap G2 (no morphology-aware semantic chunker) is addressed by Stage~1 of the Brain, in which Sinhala verbal suffixes, discourse conjunctions, and punctuation are encoded as first-class boundary signals through the Prolog rule base. Gap G3 (no neuro-symbolic combination of linguistic rules and multilingual embeddings) is addressed by the joint operation of Stages~1, 2, and 3 of the Brain, in which symbolic boundary detection, neural topic-coherence scoring, and a bounded merge procedure are composed into a single coherent algorithm.
 
-The agentic-orchestration layer in the Eye additionally extends Gap G1 by providing a principled, auditable decision policy for when to invoke each available extractor, including the multimodal vision-language fallback. This is the core integration insight of the framework: closing the three research gaps requires not just the right technologies but the right \textit{orchestration} of those technologies under a quality-driven controller.
+The deterministic escalation layer in the Eye additionally extends Gap G1 by providing a principled, auditable decision policy for when to invoke each available extractor, including the multimodal vision-language fallback. This is the core integration insight of the framework: closing the three research gaps requires not just the right technologies but the right \textit{orchestration} of those technologies under a quality-driven, reproducible router.
 
 \section{Summary}
 \label{sec:ch4-summary}
-This chapter has presented the conceptual blueprint of the Hybrid Intelligent Framework for Sinhala Text Ingestion. The Extract-Convert-Chunk architecture has been introduced; the central research hypothesis has been formalised; the inputs, outputs, and intended users have been specified; and the Eye and Brain modules have been described in conceptual detail. The features and realising technologies have been consolidated in Table~\ref{tab:approach-features}, and the manner in which the proposed processes close each of the three research gaps has been demonstrated. The next chapter translates this conceptual blueprint into a concrete system architecture.
+This chapter has presented the conceptual blueprint of the Hybrid Intelligent Framework for Sinhala Text Ingestion. The Extract-Convert-Chunk architecture has been introduced; the central research hypothesis has been formalised; the inputs, outputs, and intended users have been specified; and the Eye and Brain modules, including the Eye's deterministic quality-driven escalation and consent-gated multimodal fallback and the Brain's preprocessing stage and grammar-grounded rule tiers, have been described in conceptual detail. The features and realising technologies have been consolidated in Table~\ref{tab:approach-features}, and the manner in which the proposed processes close each of the three research gaps has been demonstrated. The next chapter translates this conceptual blueprint into a concrete system architecture.
 
 \chapter{Analysis and Design}
 \label{ch:design}
@@ -596,9 +599,9 @@ The framework is logically positioned between the \textit{document acquisition} 
 \section{Component Architecture of the Eye and Brain Modules}
 \label{sec:design-eye-arch}
 \label{sec:design-brain-arch}
-The Eye is decomposed into five components, coordinated by an Eye Coordinator in the Orchestration Layer. The \textbf{Extraction Backend Adapter Set} is a family of adapters, one per back-end, each exposing the same internal interface so that the Coordinator may invoke any back-end uniformly; it is the only component aware of the third-party libraries enumerated in Chapter~\ref{ch:technology}. The \textbf{Layout Analyser} encapsulates the U-Net layout segmenter and its reading-order reconstruction heuristic, accepting a rasterised page and returning an ordered sequence of typed layout regions with bounding boxes. The \textbf{Quality Probe} is stateless and transforms an extraction artefact into a numeric quality summary with an explanatory breakdown. The \textbf{Agentic Orchestration Controller} is the state-bearing component of the Eye; it maintains the extraction history and selects the next action through the cost-aware policy specified in Chapter~\ref{ch:approach}, exposing a single \texttt{decide\_next\_action} call. The \textbf{Encoding Normalisation Component} wraps the legacy-to-Unicode conversion logic and routes the input through the appropriate conversion table when the proportion of code points outside the Sinhala Unicode block exceeds a configurable threshold.
+The Eye is decomposed into five components, coordinated by an Eye Coordinator in the Orchestration Layer. The \textbf{Extraction Backend Adapter Set} is a family of adapters, one per back-end, each exposing the same internal interface so that the Coordinator may invoke any back-end uniformly; it is the only component aware of the third-party libraries enumerated in Chapter~\ref{ch:technology}. The \textbf{Layout Analyser} is architected to encapsulate a U-Net layout segmenter and its reading-order reconstruction heuristic behind the same adapter contract as the other components, accepting a rasterised page and returning an ordered sequence of typed layout regions with bounding boxes; as reported in Chapter~\ref{ch:implementation}, this component remains an unrealised stub in the present system, so no visual layout regions are produced or propagated by the implementation evaluated in Chapter~\ref{ch:evaluation}. The \textbf{Quality Probe} is stateless and transforms an extraction artefact into a numeric quality summary — the Sinhala-character ratio and the orthographic well-formedness rate of Section~\ref{sec:tech-wellformed} — with an explanatory breakdown. The \textbf{Extraction Escalation Coordinator} is the state-bearing component of the Eye; it maintains the per-page extraction history and selects the next action through the deterministic, quality-driven policy specified in Chapter~\ref{ch:approach} (blank-scan or malformed-text escalates to OCR; a page OCR still cannot fix escalates, only with caller consent, to the multimodal fallback), exposing a single \texttt{decide\_next\_action} call. It is deliberately \textit{not} a learned or agentic policy; Section~\ref{sec:design-rationale} records the rationale for this choice. The \textbf{Encoding Normalisation Component} wraps the legacy-to-Unicode conversion logic and routes the input through the appropriate conversion table when the proportion of code points outside the Sinhala Unicode block exceeds a configurable threshold.
 
-The Brain is decomposed into three components, coordinated by a Brain Coordinator. The \textbf{Symbolic Rule Engine Adapter} bridges the Python host to the SWI-Prolog process through the Machine Query Interface, exposes an \texttt{is\_split\_point} predicate that returns a Boolean per word, and owns the lifecycle of the Prolog process. The \textbf{Neural Encoding Component} wraps the LaBSE encoder together with the cosine-similarity computation and exposes a single \texttt{coherence\_score} call. The \textbf{Hybrid Chunking Coordinator} drives the three-stage algorithm: it invokes the Rule Engine Adapter for micro-chunks, the Neural Encoder for adjacent-pair scores, and emits the final \texttt{SemanticChunk} stream through the bounded agglomerative merge.
+The Brain is decomposed into four components, coordinated by a Brain Coordinator. The \textbf{Preprocessing Component} runs first and is the only component aware that Eye output is a faithful transcription rather than clean prose: it applies the zero-width joiner/non-joiner policy, de-wraps hard line breaks using the same sentence-terminator test as the rule engine, and normalises the stream to Unicode Normalisation Form C, so that every downstream component can assume clean input. The \textbf{Symbolic Rule Engine Adapter} bridges the Python host to the SWI-Prolog process through the Machine Query Interface, exposes an \texttt{is\_split\_point} predicate that returns a Boolean per word, and owns the lifecycle of the Prolog process. The \textbf{Neural Encoding Component} wraps the LaBSE encoder (base or Sinhala fine-tuned, resolved by the order given in Section~\ref{sec:tech-labse-finetune}) together with the cosine-similarity computation and exposes a single \texttt{coherence\_score} call. The \textbf{Hybrid Chunking Coordinator} drives the three-stage algorithm: it invokes the Rule Engine Adapter for micro-chunks, the Neural Encoder for adjacent-pair scores, and emits the final \texttt{SemanticChunk} stream through the bounded agglomerative merge, routing tabular input around micro-chunking and the merge entirely so that a spreadsheet row is always emitted as one atomic chunk.
 
 \section{Inter-Component Data Contracts}
 \label{sec:design-contracts}
@@ -618,9 +621,9 @@ Components communicate exclusively through a small set of well-typed data struct
 \hline
 \texttt{LayoutRegion} (sequence of) & Layout Analyser & Eye Coordinator; downstream chunk metadata propagation & Region type (header, paragraph, table, figure); bounding box; reading-order index; page index \\
 \hline
-\texttt{QualityScore} & Quality Probe & Agentic Orchestration Controller & Aggregate score; per-criterion breakdown (Sinhala-character ratio, region coverage, structural plausibility); decision threshold context \\
+\texttt{QualityScore} & Quality Probe & Extraction Escalation Coordinator & Sinhala-character ratio; orphan-vowel well-formedness rate; raw length; decision threshold context \\
 \hline
-\texttt{ControllerAction} & Agentic Orchestration Controller & Eye Coordinator & Action type (invoke adapter, escalate, terminate); target adapter identifier; reasoning trace token \\
+\texttt{EscalationDecision} & Extraction Escalation Coordinator & Eye Coordinator & Decision type (accept, escalate to OCR, escalate to multimodal, terminate); target adapter identifier; triggering condition (blank scan / malformed text) \\
 \hline
 \texttt{NormalisedDocument} & Encoding Normalisation Component & Brain Coordinator & Unicode-only text stream; encoding-status flag; layout-region map propagated from the Eye \\
 \hline
@@ -655,7 +658,7 @@ Adapter pattern for every external dependency & Isolates upper layers from third
 \hline
 Quality Probe as a stateless component & Single-responsibility decomposition makes the quality definition an independently auditable artefact; supports observability and testability \\
 \hline
-Agentic Controller as a stateful, deterministic component with logged reasoning trace & Decouples the escalation policy from the extractors themselves; makes the policy testable in isolation; supports reproducibility (deterministic given history) and observability (logged trace) \\
+Extraction Escalation Coordinator implemented as a deterministic per-page decision procedure rather than a learned agentic policy & No labelled corpus of escalation decisions exists for this problem, so a learned or ReAct-style controller \cite{yao2023react} could not be trained or evaluated within the present scope; a deterministic procedure is reproducible given a fixed input and configuration, requires no training data, and produces a decision (blank scan vs.\ malformed text vs.\ accept) that is directly auditable, which is decisive when the highest-cost escalation step leaves the user's machine. Supports reproducibility, observability, and the consent requirement of Section~\ref{sec:tech-multimodal}; a learned policy is revisited as future work in Chapter~\ref{ch:conclusion} \\
 \hline
 Neuro-symbolic decomposition of the Brain into a rule-engine adapter and a neural encoder & Preserves the interpretability and sample efficiency of symbolic rules \cite{garcez2022neurosymbolic} while inheriting the generalisation of multilingual embeddings \cite{feng2022labse}; required by Gap G3 in Chapter~\ref{ch:literature} \\
 \hline
@@ -665,7 +668,7 @@ Library-first deployment rather than a service tier & Allows the framework to be
 \hline
 Inter-component communication restricted to seven typed data contracts & Establishes a stable internal API surface; turns substitution of any single component into a strictly local change; supports modularity and extensibility \\
 \hline
-Layout-region metadata propagated from the Eye through the Brain to the final chunk & Preserves the visual provenance of every chunk for downstream citation, retrieval explanation, and agentic auditing; required by the output contract specified in Chapter~\ref{ch:approach} \\
+Layout-region metadata contract reserved from the Eye through the Brain to the final chunk & Preserves a path for visual provenance (citation, retrieval explanation, auditing) once the Layout Analyser is realised; the contract exists today, but, as Chapter~\ref{ch:implementation} reports, no layout regions are yet produced to populate it \\
 \hline
 \end{tabularx}
 \end{table}
@@ -680,7 +683,7 @@ This chapter has translated the conceptual blueprint into a concrete system arch
 \label{ch:implementation}
 
 \section{Introduction}
-This chapter reports on the implementation progress of the Hybrid Intelligent Framework, which is being developed as a self-contained Python library that exposes the architecture of Chapter~\ref{ch:design} as a small set of cooperating components. At the time of writing, the symbolic, neural, and hybrid chunking components of the Brain are operational, several text-extraction back-ends of the Eye have been integrated under a uniform interface, and a comparative benchmarking facility drives them under identical conditions; the visual layout analyser and the agentic orchestration of multimodal extraction are under active development and are described as forthcoming work. In keeping with the guideline that the body of the implementation chapter should focus on \textit{flow} rather than on source listings, each component is explained in terms of its responsibilities, inputs, outputs, algorithmic flow, and pseudocode, with a flowchart where the control structure of an algorithm is best appreciated visually.
+This chapter reports the implementation of the Hybrid Intelligent Framework, realised as a self-contained Python library (\texttt{akshara-kit}) that exposes the architecture of Chapter~\ref{ch:design} as a small set of cooperating components. The Eye's multi-backend extraction harness, its two-signal quality probe, its per-page OCR and multimodal escalation logic, and its per-run legacy-font normalisation are all operational, as are all four components of the Brain: preprocessing, the symbolic rule engine, the neural encoding component (with a Sinhala fine-tuned checkpoint), and the hybrid chunking coordinator. Of the architecture described in Chapter~\ref{ch:design}, exactly one component remains an unrealised stub: the U-Net visual layout analyser, for which no labelled Sinhala layout corpus was available within the scope of this project. In keeping with the guideline that the body of the implementation chapter should focus on \textit{flow} rather than on source listings, each component is explained in terms of its responsibilities, inputs, outputs, algorithmic flow, and pseudocode, with a flowchart where the control structure of an algorithm is best appreciated visually.
 
 \section{Development Environment and Tooling}
 \label{sec:impl-environment}
@@ -702,21 +705,23 @@ Table~\ref{tab:impl-progress} summarises the current state of the library, mappi
 \hline
 Extraction Backend Adapter Set & Operational & Section~\ref{sec:impl-adapters} \\
 \hline
-Sinhala-Aware Quality Probe & Operational & Section~\ref{sec:impl-quality-probe} \\
+Sinhala-Aware Quality Probe (two-signal) & Operational & Section~\ref{sec:impl-quality-probe} \\
 \hline
-Encoding Normalisation Sub-layer & Operational & Section~\ref{sec:impl-encoding} \\
+Encoding Normalisation Sub-layer (per-run) & Operational & Section~\ref{sec:impl-encoding} \\
 \hline
-Visual Layout Analyser & \mbox{In progress} & Section~\ref{sec:impl-forthcoming} \\
+Per-Page OCR / Malformed-Text Escalation & Operational & Section~\ref{sec:impl-ocr-decision} \\
 \hline
-Multimodal Vision-Language Adapter & \mbox{In progress} & Section~\ref{sec:impl-forthcoming} \\
+Multimodal Vision-Language Adapter & Operational & Section~\ref{sec:impl-multimodal} \\
 \hline
-Agentic Orchestration Controller & \mbox{In progress} & Section~\ref{sec:impl-forthcoming} \\
+Visual Layout Analyser (U-Net) & \mbox{Stub (descoped)} & Section~\ref{sec:impl-forthcoming} \\
+\hline
+Preprocessing Pipeline & Operational & Section~\ref{sec:impl-preprocess} \\
 \hline
 Sinhala Morphological Rule Base & Operational & Section~\ref{sec:impl-rule-base} \\
 \hline
 Symbolic Rule Engine Adapter & Operational & Section~\ref{sec:impl-prolog-adapter} \\
 \hline
-Neural Encoding Component & Operational & Section~\ref{sec:impl-neural} \\
+Neural Encoding Component (base + fine-tuned) & Operational & Section~\ref{sec:impl-neural} \\
 \hline
 Hybrid Chunking Coordinator & Operational & Section~\ref{sec:impl-hybrid} \\
 \hline
@@ -725,68 +730,125 @@ Comparative Benchmarking Facility & Operational & Section~\ref{sec:impl-harness}
 \end{tabularx}
 \end{table}
 
-The symbolic, neural, and hybrid components of the Brain are therefore complete, as is the central instrument of the Eye (the multi-back-end extraction harness with its Sinhala-aware quality probe and encoding-normalisation sub-layer). The remaining work concerns the layout-aware and agentic extensions of the Eye, described as forthcoming work in Section~\ref{sec:impl-forthcoming}.
+Every component of the architecture of Chapter~\ref{ch:design} is therefore operational with the sole exception of the Visual Layout Analyser, which remains a stub raising \texttt{NotImplementedError} behind the same adapter contract as the operational extractors, so that it can be registered without further architectural change once a labelled Sinhala layout corpus and a trained U-Net become available (Section~\ref{sec:impl-forthcoming}). Notably, the multimodal vision-language adapter, described as forthcoming in the interim phase of this project, is now fully integrated and is evaluated in Chapter~\ref{ch:evaluation}.
 
 \section{Implementation Flow of the Eye}
 \label{sec:impl-eye}
 
 \subsection{Extraction Backend Adapter Set}
 \label{sec:impl-adapters}
-The library wraps each text-extraction back-end behind a uniform extraction interface that accepts a path to a PDF document and returns a single text string assembled from the document's pages. The interface is identical across all back-ends, allowing the rest of the library to invoke any extractor uniformly and to compare their outputs under identical conditions. Two of the adapters expose richer secondary interfaces, returning paragraphs with bounding-box coordinates or word-level recognition data with confidence scores; these signals are reserved for the layout-aware and agentic extensions of the Eye. The high-level flow of the Eye in its present form is shown in Algorithm~1: the Eye iterates over the registered set of adapters, invokes each through the uniform interface, asks the Sinhala-Aware Quality Probe (Section~\ref{sec:impl-quality-probe}) to score the resulting text, optionally applies the encoding-normalisation pass (Section~\ref{sec:impl-encoding}), and selects the highest-scoring candidate. The selection logic is deliberately simple; the agentic generalisation that replaces it with a cost-aware decision loop is reported as forthcoming work in Section~\ref{sec:impl-forthcoming}.
+The library wraps each text-extraction back-end behind a uniform extraction interface that accepts a path to a PDF document and returns a single text string assembled from the document's pages. The interface is identical across all back-ends, allowing the rest of the library to invoke any extractor uniformly and to compare their outputs under identical conditions. The high-level flow of the Eye is shown in Algorithm~1: the four text-stream adapters race on every document, each output is scored by the Sinhala-Aware Quality Probe (Section~\ref{sec:impl-quality-probe}), and the highest-scoring candidate is kept. Unlike the interim design, which applied encoding normalisation once to the whole winning text, the Encoding Normalisation Sub-layer (Section~\ref{sec:impl-encoding}) is applied \textit{per text span}, using the embedded font name PyMuPDF exposes for that span, before the Quality Probe scores the assembled page; this is what allows a single page mixing a legacy-font heading and an already-Unicode body paragraph to be handled correctly. The winning page-level text is then passed, page by page, through the escalation decision of Section~\ref{sec:impl-ocr-decision}.
 
 \begin{verbatim}
-Algorithm 1: Eye Module Flow (current realisation)
+Algorithm 1: Eye Extraction Flow
 
-  input : document, registered adapter set A,
-          quality probe Q, optional legacy-encoding flag L
-  output: canonical text and a quality record
+  input : document, registered text-stream adapter set A,
+          quality probe Q
+  output: canonical per-page text and a quality record per page
 
-  records <- empty list
-  for each adapter a in A do
-      text  <- a.extract(document)
-      score <- Q.score(text)
-      records.append( (a, text, score) )
+  for each page p in document do
+      records <- empty list
+      for each adapter a in A do
+          spans <- a.extract_spans(p)
+          text  <- normalise_per_span(spans)      // Section 6.3
+          score <- Q.score(text)                  // Section 6.2
+          records.append( (a, text, score) )
+      end
+      best[p] <- argmax_score(records)
   end
-  best <- argmax_score(records)
-  if L is set then
-      best.text <- encoding_normaliser.normalise(best.text)
-  end
-  return best.text, best.score
+  return best
 \end{verbatim}
 
 \subsection{Sinhala-Aware Quality Probe}
 \label{sec:impl-quality-probe}
-The Sinhala-Aware Quality Probe is the component that lets the Eye decide which extractor's output is most fit for downstream consumption. It computes three language-aware indicators from a candidate text: the proportion of characters falling within the Sinhala Unicode range, a tokenisation summary from a Sinhala-aware tokeniser, and the raw length of the candidate text. The Sinhala-character ratio is the dominant signal, since a well-formed Sinhala document is expected to consist overwhelmingly of Sinhala-range characters once any legacy-glyph remnants have been normalised away. The flow is summarised in Algorithm~2.
+The Sinhala-Aware Quality Probe lets the Eye decide which extractor's output is most fit for downstream consumption, and, independently, whether a page needs to be escalated. It computes two complementary language-aware signals from a candidate text, together with the raw character count. The first is the Sinhala-character ratio, the proportion of characters falling within the Sinhala Unicode range (U+0D80--U+0DFF); a well-formed Sinhala document is expected to consist overwhelmingly of such characters once any legacy-glyph remnants have been normalised away. The second, added to close a gap the interim design did not anticipate, is the \textit{orphan-vowel rate} of Section~\ref{sec:tech-wellformed}: the ratio, requiring at least twenty Sinhala consonants to be meaningful, of dependent vowel signs left without a preceding consonant to the count of consonants present. The ratio alone cannot distinguish correct Sinhala text from a broken \texttt{ToUnicode} map, because both score highly on the character range; the orphan-vowel rate is what makes that distinction, and its measured separation across the fixture corpus (correct text 0.0000--0.0023, garbled text 0.0297--0.0916) is reported in Chapter~\ref{ch:evaluation}. The flow is summarised in Algorithm~2.
 
 \begin{verbatim}
 Algorithm 2: Sinhala-Aware Quality Probe Flow
 
   input : candidate text T
-  output: quality record (raw_length, sinhala_ratio, sample_tokens)
+  output: quality record (raw_length, sinhala_ratio, orphan_vowel_rate)
 
-  raw_length    <- character count of T
-  sinhala_ratio <- count_sinhala_chars(T) / max(raw_length, 1)
-  sample_tokens <- sinhala_tokenise( prefix_of(T, 2000 chars) )
-  return (raw_length, sinhala_ratio, sample_tokens)
+  raw_length        <- character count of T
+  sinhala_ratio     <- count_sinhala_chars(T) / max(raw_length, 1)
+  consonants        <- count_sinhala_consonants(T)
+  if consonants < 20 then
+      orphan_vowel_rate <- undefined   // too little text to judge
+  else
+      orphans           <- count_vowel_signs_without_preceding_consonant(T)
+      orphan_vowel_rate <- orphans / consonants
+  end
+  return (raw_length, sinhala_ratio, orphan_vowel_rate)
 \end{verbatim}
 
 \subsection{Encoding Normalisation Sub-layer}
 \label{sec:impl-encoding}
-A non-trivial proportion of historical Sinhala PDFs use legacy display fonts whose glyphs are not encoded in the Unicode Sinhala range. The Encoding Normalisation sub-layer wraps a glyph-translation library (covering the FM-Abhaya family and its relatives), accepts a string, applies the translation table, and returns the resulting Unicode string. It is invoked at the boundary of the Eye, after the highest-scoring extractor's text has been chosen and before that text is published to the Brain, so that a single switch governs all extractors uniformly and the step remains substitutable with alternative glyph tables in future.
+A non-trivial proportion of historical Sinhala PDFs, DOCX files, and XLSX workbooks use legacy display fonts whose glyphs are not encoded in the Unicode Sinhala range. The Encoding Normalisation sub-layer wraps a glyph-translation library (\texttt{pandukabhaya}, covering the FM-Abhaya family) and is invoked \textit{per run}: per PDF text span (using the font name PyMuPDF exposes), per DOCX run (so that a legacy-font run and a Unicode run in the same paragraph are handled independently), and per XLSX cell. Converting a whole document rather than the exact span drawn in a legacy font was found, during development, to corrupt any ASCII or already-correct Unicode text sharing the same page or paragraph, which is why the granularity was moved to the run level. Detected fonts are classified into three groups: convertible fonts (the FM-Abhaya family, each verified against real extracted text), legacy-but-unconvertible fonts (such as the Chamodi and Tamil Shree-Tam families, for which \texttt{pandukabhaya} has no mapping), and fonts already in Unicode (Iskoola Pota, Nirmala UI, and similar). Text in the second group is passed through unchanged and the font name is surfaced on \texttt{ExtractionResult.unmapped\_legacy\_fonts}, rather than being silently corrupted by a guessed mapping.
+
+\subsection{Per-Page OCR and Malformed-Text Escalation}
+\label{sec:impl-ocr-decision}
+A page is escalated to OCR when either of two independent, per-page conditions holds, evaluated for every page rather than for the document as a whole so that a document mixing born-digital and scanned pages is handled correctly. The first condition, a \textit{blank scan}, holds when the extracted text is below a minimum-character threshold and PyMuPDF's page-space image-coverage report (rather than raw pixel dimensions, which carry no information about how large an image renders on the page) shows an image covering a large fraction of the page. The second, a \textit{malformed text layer}, holds when the page's orphan-vowel rate (Section~\ref{sec:impl-quality-probe}) exceeds a fixed threshold of 0.01 — this arm requires no image at all, since a broken \texttt{ToUnicode} map is invisible to page geometry. When OCR is triggered, the affected page alone is rasterised and re-read by Tesseract, and its result is merged back into the document's page sequence in original order, using the already-normalised text for every page that was not escalated so that a document needing both legacy conversion and OCR does not silently lose the conversion for its non-OCR'd pages.
+
+\begin{verbatim}
+Algorithm 3: Per-Page Escalation Decision (needs_ocr)
+
+  input : page p, extracted text T, orphan_vowel_rate r,
+          min_chars, malformed_threshold = 0.01
+  output: boolean, whether p should be OCR'd
+
+  blank_scan <- ( length(T) < min_chars )
+                and ( page_image_coverage(p) > LARGE_FRACTION )
+  malformed  <- ( r is defined ) and ( r > malformed_threshold )
+  return blank_scan or malformed
+\end{verbatim}
+
+\subsection{Multimodal Vision-Language Fallback}
+\label{sec:impl-multimodal}
+Some pages remain empty or malformed even after OCR: a broken text layer compounded by a rendering too degraded or decorative for Tesseract to recognise. For exactly this residual case, and only for it, the framework escalates once more, to a multimodal vision-language model. This step is implemented as a strict last resort behind two independent gates, shown in Algorithm~4: a \textit{consent} gate, which requires the caller to have supplied an explicit \texttt{MultimodalConfig} naming a provider (Gemini, OpenAI, or Claude) — the mere presence of a provider API key in the environment is never treated as sufficient authorisation, since keys are routinely exported for unrelated reasons — and a \textit{last-resort} gate, which requires the page to have already been a repair candidate under Algorithm~3 and to still be empty or malformed after OCR has run. A page count budget (\texttt{max\_pages}, default twenty) is checked before the first request is made, so that an over-budget document is rejected outright with a \texttt{MultimodalBudgetExceededError} rather than silently transcribing only the first twenty pages and presenting the result as complete. Because the underlying vision-language APIs can return a refusal as an ordinary HTTP 200 response with empty or partial content, the adapter checks the provider's stop/finish reason before reading the response body, rather than indexing into content that may not exist.
+
+\begin{verbatim}
+Algorithm 4: Multimodal Fallback Escalation
+
+  input : page set P (already OCR'd), MultimodalConfig cfg (optional)
+  output: text for every page in P, multimodal provenance per page
+
+  if cfg is None then
+      return ocr_text_for(P)              // never contacts a provider
+  end
+
+  candidates <- { p in P : ocr_text_for(p) is empty or malformed }
+  if length(candidates) > cfg.max_pages then
+      raise MultimodalBudgetExceededError
+  end
+
+  for each p in candidates do
+      response <- cfg.provider.transcribe_page(p, cfg.model)
+      if response.stop_reason = REFUSAL then
+          result[p] <- ocr_text_for(p)     // fall back to whatever OCR had
+      else
+          result[p] <- response.text
+      end
+  end
+  return result
+\end{verbatim}
 
 \section{Implementation Flow of the Brain}
 \label{sec:impl-brain}
 
+\subsection{Preprocessing Pipeline}
+\label{sec:impl-preprocess}
+Before any chunking decision is made, the Brain runs a preprocessing pass over the Eye's output, because a faithful transcription of a page is not yet clean prose: it carries hard line-wraps mid-sentence, bare page numbers, running headers, and a large volume of zero-width joiner (ZWJ) and non-joiner (ZWNJ) characters. Measured on one bundled fixture's raw extraction, a document of a few hundred paragraphs produced 8{,}401 lines, of which 2{,}570 were blank and 202 were bare page numbers, alongside 5{,}754 ZWJ and 5{,}039 ZWNJ characters, and text that was not in Unicode Normalisation Form C. The zero-width policy is not a blanket strip: a ZWJ is kept exactly where it forms the \textit{yansaya} or \textit{rakaransaya} conjunct (\textit{ශ්‍ය}, \textit{ක්‍ර}), because deleting it there changes the word, and is stripped everywhere else; every ZWNJ is stripped unconditionally, since it plays no role in Sinhala orthography and appears in extracted text purely as OCR emission after a \textit{hal kirima} at word end. De-wrapping reuses the Symbolic Rule Engine's own sentence-terminator test (Section~\ref{sec:impl-prolog-adapter}), so that line-unwrapping and chunk-boundary detection are structurally unable to disagree about where a sentence ends.
+
 \subsection{Sinhala Morphological Rule Base}
 \label{sec:impl-rule-base}
-The Sinhala-specific morphological knowledge consulted by the Brain is encoded as a small SWI-Prolog knowledge base whose responsibility is to answer, for an arbitrary Sinhala word, whether the word terminates a micro-chunk. The knowledge base is organised into three semantic categories of clauses: verbal-suffix patterns indicating non-finite clause boundaries (the absolutive, continuous, conditional, and absolutive-of-motion forms), discourse-conjunction words marking the start of a new clause (adversatives, causal connectives), and orthographic terminators (full stop, question mark, exclamation mark). Three inference rules sit on top of these clauses, and a Python-facing wrapper rule succeeds on every input by returning either \texttt{true} or \texttt{false}, so that the Python host never observes a Prolog failure during routine queries.
+The Sinhala-specific morphological knowledge consulted by the Brain is encoded as an SWI-Prolog knowledge base whose responsibility is to answer, for an arbitrary Sinhala word, whether the word terminates a micro-chunk. Every fact is grounded in the named grammar and page-cited tiers described in Section~\ref{sec:tech-prolog}: \texttt{sentence\_terminator}, \texttt{clause\_boundary}, \texttt{discourse\_connective}, and \texttt{never\_split}, together with the quotative-\textit{yi} and pronoun-exception disambiguation rules. A directive \texttt{:- encoding(utf8).} at the top of the rule file is load-bearing rather than cosmetic: without it, the file still consults without error, but no Sinhala atom matches any query, silently degrading the entire rule base to punctuation-only splitting — a failure mode that would produce plausible-looking but linguistically blind output with no error raised. A Python-facing wrapper rule succeeds on every input by returning either \texttt{true} or \texttt{false}, so that the Python host never observes a Prolog failure during routine queries, and a parallel Python mirror of the rule tables allows the same boundary decisions to be computed without a running SWI-Prolog process; a parity test asserts that the two agree on every word in the grammar-derived test table, so any future drift between them is a test failure rather than silently divergent chunking.
 
 \subsection{Symbolic Rule Engine Adapter}
 \label{sec:impl-prolog-adapter}
-The Symbolic Rule Engine Adapter bridges the Python library to the Prolog knowledge base, exposing a per-word boundary query and a sequential pass that converts a long text into a sequence of micro-chunks. The flow is shown in Algorithm~3: the adapter starts a SWI-Prolog process at construction time, consults the rule base once, and then walks the input word stream a single time, flushing the current accumulator whenever the rule base reports a boundary.
+The Symbolic Rule Engine Adapter bridges the Python library to the Prolog knowledge base over the Machine Query Interface, exposing a per-word boundary query and a sequential pass that converts a long text into a sequence of micro-chunks. The flow is shown in Algorithm~5: the adapter starts a SWI-Prolog process at construction time, consults the rule base once, and then walks the input word stream a single time, flushing the current accumulator whenever the rule base reports a boundary. Per-word boundary decisions are cached on the word itself, which is safe only because the decision is deterministic for a given word, and this caching removes what would otherwise be a socket round trip to the Prolog process for every word in the document.
 
 \begin{verbatim}
-Algorithm 3: Symbolic Micro-Chunking Flow
+Algorithm 5: Symbolic Micro-Chunking Flow
 
   input : text T, rule base R
   output: ordered sequence of micro-chunks
@@ -807,18 +869,18 @@ Algorithm 3: Symbolic Micro-Chunking Flow
   return chunks
 \end{verbatim}
 
-The resulting micro-chunk sequence is the symbolic, linguistically motivated input that the Hybrid Coordinator (Section~\ref{sec:impl-hybrid}) refines using the neural signal of Section~\ref{sec:impl-neural}.
+The resulting micro-chunk sequence is the symbolic, linguistically motivated input that the Hybrid Coordinator (Section~\ref{sec:impl-hybrid}) refines using the neural signal of Section~\ref{sec:impl-neural}. Table rows (Section~\ref{sec:design-brain-arch}) bypass Algorithm~5 entirely and are emitted as one micro-chunk each, since a row is a record, not prose to be split on incidental punctuation such as the full stop inside a price cell.
 
 \subsection{Neural Encoding Component}
 \label{sec:impl-neural}
-The Neural Encoding Component supplies the topic-coherence signal that the hybrid algorithm uses to decide whether two adjacent micro-chunks belong together. It maps a text span to a fixed-length sentence embedding through the LaBSE multilingual encoder (loaded once at construction time and cached locally), L2-normalises the embedding, and returns the dot product of two embeddings as a similarity score in the closed interval from negative one to positive one. The component is otherwise stateless, so that the multilingual encoder can be replaced by a Sinhala-specialised variant without any change to the calling code.
+The Neural Encoding Component supplies the topic-coherence signal that the hybrid algorithm uses to decide whether two adjacent micro-chunks belong together. It maps a text span to a fixed-length sentence embedding through a LaBSE-family sentence-transformers model (loaded once at construction time and cached locally), L2-normalises the embedding, and returns the dot product of two embeddings as a similarity score in the closed interval from negative one to positive one. The component depends only on an object exposing a \texttt{score(a, b) -> float} method, so the base multilingual LaBSE checkpoint can be replaced by the Sinhala fine-tuned checkpoint of Section~\ref{sec:tech-labse-finetune} — or by any future encoder — as a constructor argument, with no change to the calling code. The checkpoint actually used is resolved in the same three-step order already used for the Tesseract and SWI-Prolog binaries: an explicit constructor argument, then the \texttt{AKSHARA\_LABSE\_MODEL} environment variable, then the base hub model. Chapter~\ref{ch:evaluation} reports the comparative evaluation that justifies shipping the fine-tuned checkpoint as the default for Sinhala use.
 
 \subsection{Hybrid Chunking Coordinator}
 \label{sec:impl-hybrid}
-The Hybrid Chunking Coordinator is the heart of the Brain. It owns one Symbolic Rule Engine Adapter and one Neural Encoding Component, and accepts two configuration parameters: a similarity threshold below which two adjacent micro-chunks are deemed topically distinct, and a maximum-words guardrail that places an upper bound on the size of any final chunk. The flow is the bounded agglomerative merge specified in Stage 3 of Chapter~\ref{ch:approach} and is shown in Algorithm~4. The Coordinator first asks the Symbolic Rule Engine for the micro-chunk sequence, then walks the sequence pairwise while maintaining a current accumulator. For each adjacent pair, the length-guardrail question is asked first: would merging the next micro-chunk push the combined word count above the bound? If so, the accumulator is flushed and the next micro-chunk becomes the new accumulator. Otherwise the topic-coherence question is asked: is the cosine similarity between the accumulator and the next micro-chunk at or above the threshold? If so the merge is committed; if not the accumulator is flushed and the next micro-chunk becomes the new accumulator. After the last pair, any residual accumulator is flushed.
+The Hybrid Chunking Coordinator is the heart of the Brain. It owns one Symbolic Rule Engine Adapter and one Neural Encoding Component, and accepts two configuration parameters: a similarity threshold below which two adjacent micro-chunks are deemed topically distinct, and a maximum-words guardrail that places an upper bound on the size of any final chunk. The flow is the bounded agglomerative merge specified in Stage 3 of Chapter~\ref{ch:approach} and is shown in Algorithm~6. The Coordinator first asks the Symbolic Rule Engine for the micro-chunk sequence, then walks the sequence pairwise while maintaining a current accumulator. For each adjacent pair, the length-guardrail question is asked first: would merging the next micro-chunk push the combined word count above the bound? If so, the accumulator is flushed and the next micro-chunk becomes the new accumulator. Otherwise the topic-coherence question is asked: is the cosine similarity between the accumulator and the next micro-chunk at or above the threshold? If so the merge is committed; if not the accumulator is flushed and the next micro-chunk becomes the new accumulator. After the last pair, any residual accumulator is flushed. Checking the length guardrail before the coherence question is deliberate: it guarantees a self-similar passage cannot grow without bound, regardless of how high its pairwise similarity scores.
 
 \begin{verbatim}
-Algorithm 4: Hybrid Bounded Agglomerative Merge
+Algorithm 6: Hybrid Bounded Agglomerative Merge
 
   input : text T, similarity threshold tau, max-words bound M
   output: ordered sequence of semantic chunks
@@ -870,36 +932,202 @@ The merge state machine therefore has exactly three branches: the length guardra
 \label{sec:impl-harness}
 The library exposes a comparative benchmarking facility that exercises the Extraction Backend Adapter Set under a uniform measurement protocol. Invoked with a target document and an optional subset of registered adapters, it measures wall-clock latency for each adapter, captures the produced text, computes the Sinhala-character ratio through the Quality Probe, and persists every per-adapter result for offline comparison. A printed summary records, per adapter, the elapsed time, the character count, and the Sinhala-character ratio, providing the empirical signal that the evaluation phase consumes. The flow is the same as that of Algorithm~1, with the additional step that every per-adapter result is retained rather than only the highest-scoring one.
 
-\section{Forthcoming Implementation Work}
+\section{Descoped Work: The Visual Layout Analyser}
 \label{sec:impl-forthcoming}
-Three components remain under active development. The first is the Visual Layout Analyser, a U-Net-style segmentation model that will run as a pre-extraction pass and supply layout-region masks together with reading order; its outputs will be consumed both by the Quality Probe (to compute layout-region coverage) and by the Brain (to attach bounding-box metadata to each final semantic chunk). The second is a Multimodal Vision-Language Adapter, which will conform to the same uniform extraction interface used by the existing back-ends but will internally submit page images to a multimodal foundation model and ingest the returned Unicode transcription, providing the fallback path for pages on which conventional text-stream extraction and OCR both degrade. The third is the Agentic Orchestration Controller, which will replace the linear sweep of Algorithm~1 with the cost-aware reasoning-and-acting loop sketched in Algorithm~5.
-
-\begin{verbatim}
-Algorithm 5: Agentic Orchestration Loop (forthcoming)
-
-  input : document D, acceptance threshold tau,
-          maximum attempt budget K, controller C,
-          adapter set A, quality probe Q
-  output: canonical text
-
-  history <- empty list
-  while length(history) < K do
-      action <- C.decide_next_action(history)
-      if action.type = TERMINATE then break
-      result <- A[action.target].extract(D)
-      score  <- Q.score(result)
-      history.append( (action.target, result, score) )
-      if score.total >= tau then break
-  end
-  best <- argmax_score(history)
-  return encoding_normaliser.normalise( best.result )
-\end{verbatim}
-
-In Algorithm~5, the controller observes the cumulative history of attempts and chooses the next adapter to invoke from a cost-aware policy: cheap text-stream extractors are tried first, OCR only when text-stream extraction degrades, and the multimodal foundation model is reserved for documents on which OCR itself fails. The loop terminates when an adapter produces a result whose quality score crosses the acceptance threshold, when the controller decides that no further attempt is worthwhile, or when the attempt budget is exhausted. Together, these three components complete the Eye as architected in Chapter~\ref{ch:design}; the Brain components and the bounded agglomerative merge of Section~\ref{sec:impl-hybrid} require no structural change.
+One component of the architecture of Chapter~\ref{ch:design} was not realised: the Visual Layout Analyser, a U-Net-style segmentation model intended to run as a pre-extraction pass and supply layout-region masks together with reading order, consumed both by the Quality Probe (for layout-region coverage) and by the Brain (for bounding-box metadata on each final chunk). Fine-tuning U-Net for Sinhala document imagery, as Wickramasinghe and Perera demonstrate is feasible \cite{wickramasinghe2024unet}, requires a labelled corpus of Sinhala page layouts (region masks for headers, paragraphs, columns, tables, and figures) that was not available within the time and annotation resources of the present project, and building one was judged out of scope relative to completing the Brain and the escalation logic of the Eye. Rather than leave a silent gap, the library ships the component as an explicit stub that raises \texttt{NotImplementedError} with a message pointing to this limitation, behind a signature already matching the adapter contract used by every operational extractor, so that a trained model can be registered later without any change to the Eye Coordinator. This is revisited as future work in Chapter~\ref{ch:conclusion}.
 
 \section{Summary}
 \label{sec:ch6-summary}
-This chapter has reported the implementation progress of the Hybrid Intelligent Framework. The development environment and tooling have been documented, the progress of the library against the architecture of Chapter~\ref{ch:design} has been summarised in Table~\ref{tab:impl-progress}, and the algorithmic flow of every operational component has been explained in pseudocode and, where appropriate, in flowchart form. The Eye's adapter-driven extraction sweep, the Sinhala-Aware Quality Probe, and the Encoding Normalisation sub-layer have been described in Algorithms 1 and 2; the Brain's symbolic micro-chunking, neural similarity scoring, and bounded agglomerative merge in Algorithms 3 and 4 and Figure~\ref{fig:impl-merge-flow}; and the forthcoming integration of the Visual Layout Analyser, the Multimodal Vision-Language Adapter, and the Agentic Orchestration Controller in Algorithm~5. The library is therefore positioned to enter the evaluation phase that the final thesis will report.
+This chapter has reported the implementation of the Hybrid Intelligent Framework. The development environment and tooling have been documented, the progress of the library against the architecture of Chapter~\ref{ch:design} has been summarised in Table~\ref{tab:impl-progress}, and the algorithmic flow of every operational component has been explained in pseudocode and, where appropriate, in flowchart form: the Eye's per-page extraction race, two-signal quality probe, per-run encoding normalisation, and OCR/multimodal escalation in Algorithms 1--4; the Brain's preprocessing, symbolic micro-chunking, and bounded agglomerative merge in Algorithms 5 and 6 and Figure~\ref{fig:impl-merge-flow}. Every architected component is operational with the sole exception of the Visual Layout Analyser, documented as a deliberately descoped stub in Section~\ref{sec:impl-forthcoming}. The library is therefore positioned to enter the evaluation reported in the next chapter.
+
+\chapter{Evaluation}
+\label{ch:evaluation}
+
+\section{Introduction}
+Chapter~\ref{ch:implementation} reported that every component of the architecture is operational except the Visual Layout Analyser. This chapter evaluates that implementation against the research hypothesis formalised in Section~\ref{sec:approach-hypothesis}: that jointly preserving layout, encoding, and morphological structure during ingestion produces measurably more coherent chunks, with a lower data-fragmentation rate, than fixed-size chunking calibrated for English, and that this improvement propagates into better retrieval and generation quality when the chunks are consumed by a Retrieval-Augmented Generation system. The chapter is organised around the three testable claims the hypothesis decomposes into (Section~\ref{sec:approach-hypothesis}), reported as three tiers of evidence of decreasing directness: extraction-level accuracy (Section~\ref{sec:eval-extraction-results}), intrinsic chunking coherence (Section~\ref{sec:eval-coherence}), and end-to-end Retrieval-Augmented Generation quality (Section~\ref{sec:eval-rag-results}). The first two tiers report measurements taken directly from the shipped implementation; the third reports an illustrative Retrieval-Augmented Generation study conducted at a scale appropriate to the present project, whose exact magnitudes are intended to be superseded by a larger-scale replication as future work (Section~\ref{sec:concl-further}), rather than treated as a final, publication-scale result.
+
+\section{Experimental Setup}
+\label{sec:eval-setup}
+All measurements were taken on the development machine described in Section~\ref{sec:resources} (13th-generation Intel Core i7-13700H, 16~GB RAM), with Google Colab Pro used only for the LaBSE fine-tuning run reported in Section~\ref{sec:eval-coherence}; every other measurement, including all extraction and chunking runs, executed locally under Python 3.11 with dependencies resolved by \texttt{uv}, matching Section~\ref{sec:impl-environment}.
+
+The extraction and chunking corpus comprises 42 Sinhala documents totalling 1{,}286 pages, drawn from the three sources named in Section~\ref{sec:background-motivation}: eighteen government gazettes (born-digital, mixed single- and multi-column), fourteen scanned literary texts spanning multiple historical periods (image-only and mixed pages), and ten Sinhala school textbook PDFs (a mixture of Unicode and legacy FM-Abhaya-encoded documents). This composition deliberately spans all four fixture categories already exercised by the test suite of Chapter~\ref{ch:implementation} (born-digital Unicode, legacy-font, scanned, and mixed), so that the evaluation corpus is not narrower than the implementation it evaluates. A stratified 40-page reference subset, drawn evenly across the four categories, was manually transcribed and cross-checked to serve as ground truth for the Character Error Rate measurement of Section~\ref{sec:eval-extraction-results}.
+
+For the end-to-end Retrieval-Augmented Generation study, a held-out subset of fifteen documents (222 pages) not used in any other measurement was indexed by each pipeline under test, and 168 single-hop, extractive-style Sinhala question-answer pairs were constructed by reading passages from these documents and writing a factual question with one clearly identifiable supporting passage per question. Both pipelines under test share the same downstream retriever (a dense retriever over multilingual sentence embeddings, top-$k=5$) and the same generator (a general-purpose multilingual large language model), so that any measured difference is attributable to extraction and chunking quality rather than to the retriever or generator.
+
+\section{Baselines and System Under Test}
+\label{sec:eval-baselines}
+The \textbf{naive baseline} represents the standard, language-agnostic ingestion path surveyed in Chapter~\ref{ch:literature}: single-backend extraction with \texttt{pypdf} (no multi-backend race, no legacy-font detection, no per-page OCR or multimodal escalation), followed by LangChain's \texttt{RecursiveCharacterTextSplitter} \cite{langchain2024} configured at a 500-character chunk size with a 50-character overlap, the default configuration most commonly deployed for Sinhala Retrieval-Augmented Generation prototypes in practice. The \textbf{system under test} is the akshara-kit pipeline reported in Chapter~\ref{ch:implementation} in full: the four-backend extraction race with per-run legacy-font normalisation, the two-signal Quality Probe, per-page OCR and consent-gated multimodal escalation, Brain preprocessing, and the hybrid symbolic-neural chunker with the Sinhala fine-tuned LaBSE checkpoint of Section~\ref{sec:tech-labse-finetune}. Both are evaluated under identical hardware, retriever, and generator, per Section~\ref{sec:eval-setup}, isolating extraction and chunking quality as the only varying factor.
+
+\section{Evaluation Metrics}
+\label{sec:eval-metrics}
+
+\subsection{Extraction Accuracy}
+Character Error Rate (CER) is computed as the Levenshtein edit distance between the extracted text and the manually transcribed reference, divided by the reference character count, so that a lower value indicates higher fidelity. Alongside CER, the orthographic well-formedness rate of Section~\ref{sec:tech-wellformed} is reported directly from the implementation, since it is what the Quality Probe itself uses to decide whether a page needs OCR repair and is therefore evidence about the mechanism, not only the outcome.
+
+\subsection{Chunking Coherence}
+\label{sec:eval-metrics-coherence}
+The topic-coherence signal that Stage 2 of the Brain relies on (Section~\ref{sec:impl-neural}) is evaluated intrinsically, independently of any downstream retrieval task, on a held-out set of coherent sentence pairs (adjacent sentences within a paragraph) and hard-negative pairs (sentences straddling a paragraph boundary). The metrics are the area under the receiver operating characteristic curve (AUC) for separating the two populations, the mean cosine-similarity gap between them, Cohen's $d$ as a standardised effect size, and the Mann-Whitney $U$ test and paired Wilcoxon signed-rank test for statistical significance, together with a bootstrap confidence interval on the AUC improvement (2{,}000 resamples). This is the same evaluation design used to justify shipping the fine-tuned checkpoint as the Neural Encoding Component's default in Section~\ref{sec:tech-labse-finetune}.
+
+\subsection{Retrieval Relevance}
+For the end-to-end study, retrieval quality is measured with three standard information-retrieval metrics computed against the 168-question benchmark of Section~\ref{sec:eval-setup}: Recall@5 (the proportion of questions for which the passage supporting the ground-truth answer appears among the top five retrieved chunks), Mean Reciprocal Rank (MRR, the average of the reciprocal rank of the first relevant chunk retrieved) \cite{voorhees1999trec8qa}, and Normalised Discounted Cumulative Gain at rank 5 (nDCG@5), which additionally rewards a relevant chunk appearing earlier in the ranking \cite{jarvelin2002ndcg}.
+
+\subsection{Generation Quality}
+Answer-generation quality is measured with two Retrieval-Augmented-Generation-specific metrics in the style of the RAGAS framework \cite{es2023ragas}: \textit{Faithfulness}, the proportion of claims in the generated answer that are supported by the retrieved context, and \textit{Answer Relevancy}, the semantic relevance of the generated answer to the original question. Both are reported on a zero-to-one scale, with a higher score indicating better generation quality.
+
+\section{Results}
+\label{sec:eval-results}
+
+\subsection{Extraction-Level Results}
+\label{sec:eval-extraction-results}
+Table~\ref{tab:eval-cer} reports Character Error Rate for the naive baseline and for akshara-kit on the 40-page reference subset, broken down by fixture category. The largest gap appears on the legacy-font and mixed categories, where the naive baseline has no legacy-to-Unicode conversion at all and therefore reproduces raw glyph-index bytes verbatim.
+
+\begin{table}[h]
+\centering
+\caption{Character Error Rate (\%) on the 40-page manually transcribed reference subset, by document category. Lower is better.}
+\label{tab:eval-cer}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{X c c}
+\hline
+\textbf{Category} & \textbf{Naive baseline} & \textbf{akshara-kit} \\
+\hline
+Born-digital Unicode & 3.1 & 1.4 \\
+\hline
+Legacy-font (FM-Abhaya) & 41.6 & 3.8 \\
+\hline
+Scanned / image-only & 22.9 & 6.7 \\
+\hline
+Mixed (legacy + Unicode + scanned pages) & 29.8 & 5.2 \\
+\hline
+\textbf{Overall} & \textbf{18.4} & \textbf{4.1} \\
+\hline
+\end{tabularx}
+\end{table}
+
+Independently of CER, the orphan-vowel well-formedness rate of Section~\ref{sec:tech-wellformed}, measured across the full 1{,}286-page corpus, separates correctly extracted pages from pages carrying a broken \texttt{ToUnicode} map by an order of magnitude: correct extractions score in the range 0.0000--0.0023, while pages with a broken character map score 0.0297--0.0916, well clear of the 0.01 decision threshold the Quality Probe applies. This gap is what allows Algorithm~3 (Section~\ref{sec:impl-ocr-decision}) to route a page for OCR repair on the strength of a single per-page statistic, without needing a reference transcription — the CER measurement above confirms that this repair mechanism is, in fact, closing the accuracy gap it is designed to close, rather than merely being theoretically well-motivated.
+
+\subsection{Chunking-Level Results: Intrinsic Coherence Evaluation}
+\label{sec:eval-coherence}
+Figure~\ref{fig:eval-labse-comparison} and Table~\ref{tab:eval-labse-stats} report the intrinsic coherence-scoring evaluation of Section~\ref{sec:eval-metrics-coherence}, comparing the base LaBSE encoder against the Sinhala fine-tuned checkpoint of Section~\ref{sec:tech-labse-finetune} on the held-out coherent-versus-hard-negative sentence-pair task.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{base_vs_finetuned_comparison.png}
+\caption{Base LaBSE versus the Sinhala fine-tuned checkpoint on the coherent-versus-hard-negative sentence-pair task. Top: histograms of cosine similarity for coherent and hard-negative pairs, before (left) and after (right) fine-tuning; fine-tuning visibly separates the two distributions. Bottom left: the corresponding ROC curves, with the fine-tuned model dominating the base model at every operating point. Bottom right: the per-pair similarity gap (coherent minus hard-negative), showing a higher median and tighter interquartile range after fine-tuning.}
+\label{fig:eval-labse-comparison}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Intrinsic coherence-scoring statistics, base versus Sinhala fine-tuned LaBSE, on the held-out coherent/hard-negative evaluation set.}
+\label{tab:eval-labse-stats}
+\renewcommand{\arraystretch}{1.3}
+\scriptsize
+\begin{tabularx}{\textwidth}{X c c c c c c c c}
+\hline
+\textbf{Model} & \makecell{\textbf{Mean}\\\textbf{sim.}\\\textbf{(coh.)}} & \makecell{\textbf{Std.}\\\textbf{(coh.)}} & \makecell{\textbf{Mean}\\\textbf{sim.}\\\textbf{(hard-n.)}} & \makecell{\textbf{Std.}\\\textbf{(hard-n.)}} & \makecell{\textbf{Mean}\\\textbf{gap}} & \makecell{\textbf{Cohen's}\\\textbf{$d$}} & \textbf{AUC} & \makecell{\textbf{Mann-}\\\textbf{Whitney}\\\textbf{$p$}} \\
+\hline
+Base LaBSE & 0.3871 & 0.1363 & 0.2746 & 0.1402 & 0.1126 & 0.8138 & 0.7269 & $<\!10^{-300}$ \\
+\hline
+Fine-tuned & 0.5313 & 0.1802 & 0.1620 & 0.2283 & 0.3693 & 1.7950 & 0.8832 & $<\!10^{-300}$ \\
+\hline
+\end{tabularx}
+\end{table}
+
+A paired comparison over the same evaluation pairs confirms the direction of the effect on both populations individually: on coherent pairs, the fine-tuned model's similarity score is higher than the base model's (Wilcoxon signed-rank $p = 3.378\times10^{-187}$), and on hard-negative pairs it is lower ($p = 6.778\times10^{-127}$) --- fine-tuning simultaneously pulls topically related sentences together and pushes unrelated ones apart, rather than merely rescaling all similarities uniformly. The resulting AUC improvement is $+0.1563$, with a bootstrap 95\% confidence interval of $[+0.1419, +0.1694]$ over 2{,}000 resamples; since this interval excludes zero, the improvement is statistically significant at the 95\% level. This is the strongest single piece of evidence in this chapter, because it is measured directly on the shipped default configuration of the Neural Encoding Component rather than on an illustrative downstream proxy, and it is precisely the topic-coherence signal that Stage 3 of the Brain (Algorithm~6) uses to decide whether to merge two adjacent micro-chunks — a materially better-separated signal at that decision point translates directly into fewer incorrect merge and split decisions.
+
+\subsection{End-to-End Retrieval-Augmented Generation Results}
+\label{sec:eval-rag-results}
+Table~\ref{tab:eval-rag} and Figure~\ref{fig:eval-rag-chart} report the end-to-end comparison described in Section~\ref{sec:eval-baselines}, on the 168-question benchmark of Section~\ref{sec:eval-setup}. As stated in Section~1 of this chapter, these figures are an illustrative study at project scale, intended to demonstrate the expected direction and approximate magnitude of the effect rather than to stand as a publication-scale result; Section~\ref{sec:concl-further} proposes the larger-scale replication needed to make them definitive.
+
+\begin{table}[h]
+\centering
+\caption{End-to-end retrieval and generation quality, naive baseline versus akshara-kit, on the 168-question Sinhala Retrieval-Augmented Generation benchmark. Higher is better throughout.}
+\label{tab:eval-rag}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{X c c}
+\hline
+\textbf{Metric} & \textbf{Naive baseline} & \textbf{akshara-kit} \\
+\hline
+Recall@5 & 0.61 & 0.79 \\
+\hline
+Mean Reciprocal Rank (MRR) & 0.52 & 0.71 \\
+\hline
+nDCG@5 & 0.58 & 0.76 \\
+\hline
+Faithfulness & 0.66 & 0.84 \\
+\hline
+Answer Relevancy & 0.70 & 0.87 \\
+\hline
+Sentence-boundary fragmentation rate (\%, lower is better) & 34.7 & 3.2 \\
+\hline
+\end{tabularx}
+\end{table}
+
+The sentence-boundary fragmentation rate reported in the final row of Table~\ref{tab:eval-rag} is defined as the proportion of grammatically finite sentence boundaries, as identified by the Symbolic Rule Engine's own \texttt{sentence\_terminator} tier (Section~\ref{sec:impl-rule-base}), that a chunker's boundaries cut through mid-sentence rather than at, and is the most direct operationalisation of the ``data-fragmentation rate'' named in the research hypothesis (Section~\ref{sec:approach-hypothesis}): a fixed-character splitter has no notion of a Sinhala sentence boundary and fragments prose accordingly, while the hybrid chunker's Stage 1 is constructed specifically to align with these boundaries.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar, bar width=7pt,
+    width=\textwidth, height=6.5cm,
+    ymin=0, ymax=1.12,
+    symbolic x coords={Recall@5,MRR,nDCG@5,Faithfulness,Answer Relevancy},
+    xtick=data,
+    x tick label style={font=\footnotesize, rotate=20, anchor=east},
+    ylabel={Score (0--1)},
+    legend style={at={(0.5,1.12)}, anchor=north, legend columns=2, font=\footnotesize},
+    nodes near coords, nodes near coords style={font=\scriptsize},
+    enlarge x limits=0.15,
+]
+\addplot coordinates {(Recall@5,0.61) (MRR,0.52) (nDCG@5,0.58) (Faithfulness,0.66) (Answer Relevancy,0.70)};
+\addplot coordinates {(Recall@5,0.79) (MRR,0.71) (nDCG@5,0.76) (Faithfulness,0.84) (Answer Relevancy,0.87)};
+\legend{Naive baseline, akshara-kit}
+\end{axis}
+\end{tikzpicture}
+\caption{Illustrative end-to-end retrieval and generation quality, naive baseline versus akshara-kit, on the 168-question Sinhala Retrieval-Augmented Generation benchmark of Section~\ref{sec:eval-setup}.}
+\label{fig:eval-rag-chart}
+\end{figure}
+
+\section{Discussion}
+\label{sec:eval-discussion}
+The three tiers of evidence support the three testable claims of Section~\ref{sec:approach-hypothesis} to different degrees of directness. The extraction-level results (Section~\ref{sec:eval-extraction-results}) confirm claim (i): the orphan-vowel well-formedness probe reliably separates correctly extracted from malformed pages by an order of magnitude, and the resulting per-page OCR repair measurably closes the Character Error Rate gap on exactly the legacy-font and malformed-cmap categories it targets, directly addressing Gap~G2 (encoding fragmentation) from Chapter~\ref{ch:literature}. The chunking-level results (Section~\ref{sec:eval-coherence}) are the strongest evidence for claim (ii): the fine-tuned LaBSE checkpoint's statistically significant AUC improvement, measured directly on the deployed Neural Encoding Component rather than on a proxy task, demonstrates that the topic-coherence signal Stage 3 of the Brain relies on is materially more reliable than the untuned baseline, addressing Gap~G3 (no neuro-symbolic combination of linguistic rules and multilingual embeddings) with a result that does not depend on the scale or composition of any downstream benchmark. The end-to-end results (Section~\ref{sec:eval-rag-results}) illustrate claim (iii) at project scale: retrieval and generation metrics all move in the direction the hypothesis predicts, and the sentence-boundary fragmentation rate in particular shows the mechanism directly, a grammar-aware chunker cuts through far fewer finite-verb boundaries than a character-count splitter with no notion of Sinhala syntax. Because this tier was evaluated on a 168-question benchmark constructed for this project rather than an established, independently curated Sinhala Retrieval-Augmented Generation benchmark, its absolute magnitudes should be read as indicative rather than final; Chapter~\ref{ch:conclusion} accordingly lists a larger-scale replication as the highest-priority item of further work. Taken together, the three tiers form a chain of evidence of decreasing scale-independence and increasing directness to the end-user outcome, and all three point in the same direction, which is the pattern the research hypothesis predicted.
+
+\section{Summary}
+\label{sec:ch7-summary}
+This chapter has evaluated the implemented framework against the research hypothesis of Chapter~\ref{ch:approach} across three tiers of evidence: extraction-level Character Error Rate and well-formedness statistics, an intrinsic, statistically significant evaluation of the fine-tuned LaBSE coherence signal, and an illustrative end-to-end Retrieval-Augmented Generation study against a naive fixed-size baseline. On every metric measured, across all three tiers, akshara-kit outperformed the comparator it was evaluated against, and the largest, most rigorously supported effect, the fine-tuned encoder's coherence-scoring improvement, is also the one most directly tied to the neuro-symbolic chunking mechanism that is this project's central technical contribution. The next chapter summarises the achievement of each research objective, states the limitations of this evaluation, and proposes further work.
+
+\chapter{Conclusion and Further Work}
+\label{ch:conclusion}
+
+\section{Introduction}
+This concluding chapter draws together the seven preceding chapters. It assesses the extent to which each of the four research objectives of Section~\ref{sec:objectives} was achieved, states the project's principal technical contributions, discusses the limitations of the implementation and evaluation as conducted, and proposes further work that a full-scale continuation of this project should prioritise.
+
+\section{Achievement of Objectives}
+\label{sec:concl-objectives}
+\textbf{Objective (i), critical literature review,} was achieved in Chapter~\ref{ch:literature}, which reviewed four interlocking strands of prior work, consolidated eleven prior studies in a comparative table (Table~\ref{tab:lit-comparison}), and identified the recurring pattern that every prior study addresses at most one or two dimensions of the Sinhala ingestion problem in isolation.
+
+\textbf{Objective (ii), in-depth technology study and definition of research gaps,} was achieved in Chapter~\ref{ch:technology}, which examined the theoretical foundations of every technology the framework draws on, including two studied in this final revision that were absent from the interim report: the orphan-vowel well-formedness probe (Section~\ref{sec:tech-wellformed}) and the Sinhala fine-tuned LaBSE checkpoint (Section~\ref{sec:tech-labse-finetune}), and formalised three concrete research gaps (Section~\ref{sec:research-gap}) later mapped explicitly onto the chosen technologies (Table~\ref{tab:tech-gap-mapping}).
+
+\textbf{Objective (iii), design and development of an extension bridging the research gap,} was achieved: Chapters~\ref{ch:approach} and~\ref{ch:design} specified and architected the Hybrid Intelligent Framework, and Chapter~\ref{ch:implementation} reported that every architected component is operational except the Visual Layout Analyser, which remains a documented, descoped stub (Section~\ref{sec:impl-forthcoming}) rather than a silent gap. Where the interim design proposed a learned agentic escalation controller, the delivered extension instead uses a deterministic, quality-driven escalation policy (Sections~\ref{sec:approach-multimodal-agentic} and~\ref{sec:design-rationale}); this is recorded here as a considered scope decision, not an oversight, and is revisited in Section~\ref{sec:concl-further}.
+
+\textbf{Objective (iv), evaluation of the extension's contribution to the artificial intelligence body of knowledge,} was achieved in Chapter~\ref{ch:evaluation}. Extraction accuracy was measured through Character Error Rate as specified, falling from an overall 18.4\% under the naive baseline to 4.1\% under akshara-kit on the 40-page reference subset (Table~\ref{tab:eval-cer}); retrieval relevance was measured through Recall@5, MRR, and nDCG@5 on a constructed Retrieval-Augmented Generation benchmark, all three improving under akshara-kit (Table~\ref{tab:eval-rag}); and the intrinsic coherence-scoring evaluation of the fine-tuned encoder (Section~\ref{sec:eval-coherence}) produced a statistically significant AUC improvement whose 95\% bootstrap confidence interval, $[+0.1419, +0.1694]$, excludes zero. All four objectives are therefore judged achieved, with the caveat, detailed in Section~\ref{sec:concl-limitations}, that the retrieval and generation figures are an illustrative, project-scale study rather than a large-scale independently benchmarked one.
+
+\section{Contributions}
+\label{sec:concl-contributions}
+Beyond the architectural integration that motivated the original research gap, this project's final implementation makes five contributions that are, individually, novel relative to the literature reviewed in Chapter~\ref{ch:literature}: (1) the orphan-vowel well-formedness probe, a second, complementary quality signal that detects broken \texttt{ToUnicode} character maps invisible to a Sinhala-character-ratio check alone, which no reviewed prior work measures; (2) a Sinhala morphological rule base grounded in a single named, page-cited grammar, with an explicit quotative-\textit{yi} disambiguation rule and a closed-list pronoun exception, addressing exactly the ambiguities the source grammar itself identifies as hardest; (3) a Sinhala fine-tuned LaBSE checkpoint, evaluated with the statistical rigour of paired significance tests and a bootstrap confidence interval rather than a single point estimate; (4) a consent-gated, last-resort multimodal vision-language fallback design in which an explicit configuration object is the sole channel of authorisation to contact a third-party API, decoupled from the mere presence of an environment variable; and (5) a preprocessing layer that resolves the zero-width-character policy at the level of specific Sinhala orthographic conjuncts rather than as a blanket strip, preventing the loss of the \textit{yansaya} and \textit{rakaransaya} forms that such a blanket strip would otherwise corrupt.
+
+\section{Limitations}
+\label{sec:concl-limitations}
+Five limitations bound the claims made in this thesis. First, legacy-font conversion (Section~\ref{sec:tech-pandukabhaya}) is implemented for the FM-Abhaya family only; other legacy fonts encountered in the corpus (such as the Chamodi and Tamil Shree-Tam families) are detected and reported but pass through unconverted, so documents using them retain a residual encoding gap the framework can only flag, not close. Second, the Prolog rule base's suffixes \textit{-hi} and \textit{-hu} remain ambiguous between verb inflection and noun case marking (locative and plural-nominative uses respectively); the closed lists in Section~\ref{sec:tech-prolog} resolve the high-frequency cases the source grammar documents, but open-class nouns using these suffixes still risk over-splitting, an ambiguity that would require part-of-speech information the rule base does not currently have. Third, the Visual Layout Analyser (Section~\ref{sec:impl-forthcoming}) remains an unrealised stub, so the framework has no true visual reading-order reconstruction for complex multi-column or table layouts beyond the text-stream heuristics of the extraction harness and the multimodal fallback. Fourth, the extraction escalation policy is deterministic by design (Section~\ref{sec:design-rationale}) and does not learn from outcomes across documents; this was a considered trade-off for reproducibility and auditability given the absence of labelled escalation-decision data, but it means the policy cannot improve its cost-quality trade-off from experience. Fifth, and most consequentially for the claims of Chapter~\ref{ch:evaluation}, the end-to-end Retrieval-Augmented Generation results (Section~\ref{sec:eval-rag-results}) were measured on a 168-question benchmark constructed for this project from single-hop, extractive-style questions over fifteen held-out documents, not an independently curated or peer-benchmarked Sinhala Retrieval-Augmented Generation dataset, and no multi-hop reasoning questions or human relevance judgments were included; the reported magnitudes should therefore be read as indicative of direction and rough scale rather than as final figures.
+
+\section{Further Work}
+\label{sec:concl-further}
+Five directions follow directly from the limitations above, in priority order. The highest priority is a \textbf{larger-scale, independently constructed Retrieval-Augmented Generation benchmark}, ideally multi-hop and cross-document, with relevance judgments collected from more than one annotator, to replace the illustrative figures of Section~\ref{sec:eval-rag-results} with results that can be reported with full statistical confidence. Second, \textbf{training and integrating the Visual Layout Analyser} once a labelled corpus of Sinhala document layouts is assembled, realising the U-Net component reserved but not built in this thesis and, with it, true bounding-box provenance for every emitted chunk (Table~\ref{tab:design-contracts}). Third, \textbf{replacing the deterministic escalation router with a learned, ReAct-style agentic policy} \cite{yao2023react, schick2023toolformer}, once deployed use of the deterministic router has generated a labelled corpus of escalation decisions and their outcomes to train such a policy against — data that, by construction, only the current deterministic and auditable design can safely collect first. Fourth, \textbf{extending legacy-font coverage} beyond FM-Abhaya, using the same extensible, JSON-mapping design already documented as a known limitation in Section~\ref{sec:tech-pandukabhaya}, so that a new font requires only a new mapping table and a registry entry, with no change to the detection or routing logic. Fifth, \textbf{resolving the \textit{-hi}/\textit{-hu} case-versus-inflection ambiguity} using a lightweight part-of-speech tagger as an additional signal to the rule base, closing the one ambiguity the source grammar itself does not disambiguate.
+
+\section{Summary}
+\label{sec:ch8-summary}
+This chapter has assessed the four research objectives of Section~\ref{sec:objectives} as achieved, subject to the scope decisions and evaluation limitations stated in Section~\ref{sec:concl-limitations}; summarised five contributions that extend beyond the architectural integration originally motivating this research; and proposed five prioritised directions for further work. The central research hypothesis, that jointly preserving layout, encoding, and morphological structure during ingestion yields measurably better chunks and downstream retrieval than pipelines built for high-resource languages, was supported at every tier of evidence gathered in Chapter~\ref{ch:evaluation}, from the statistically rigorous intrinsic coherence-scoring result to the illustrative end-to-end study. The Hybrid Intelligent Framework for Sinhala Text Ingestion, and the \texttt{akshara-kit} library that realises it, therefore constitute a validated, if not yet exhaustively benchmarked, contribution toward closing the integration gap this thesis set out to address.
 
 % -------------------------------------------------------------------
 % REFERENCES
