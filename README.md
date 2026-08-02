@@ -223,6 +223,32 @@ from akshara_kit.brain import LabseScorer
 chunk(result, scorer=LabseScorer("path/to/your-finetuned-labse"))
 ```
 
+A Sinhala fine-tune of LaBSE — trained on Sinhala Wikipedia to separate
+topically-coherent sentence pairs from paragraph-boundary hard negatives —
+measurably outperforms the base model on this task:
+
+| | AUC | mean sim, coherent | mean sim, hard-negative |
+|---|---|---|---|
+| Base LaBSE | 0.7269 | 0.3871 | 0.2746 |
+| Fine-tuned | 0.8832 | 0.5313 | 0.1620 |
+
+To use a fine-tuned checkpoint without passing `scorer` at every call site, set
+`AKSHARA_LABSE_MODEL` — same resolution order as `AKSHARA_SWIPL_CMD` above
+(explicit argument, then the environment variable, then the base hub model):
+
+```bash
+export AKSHARA_LABSE_MODEL=/path/to/labse-sinhala-finetuned
+```
+
+```python
+chunk(result)   # now uses the checkpoint at AKSHARA_LABSE_MODEL
+```
+
+`scripts/chunk_fixtures.py` does this automatically for local development: if
+`models/labse-sinhala-finetuned/` exists in the project root it's used in
+place of the base model, and the script prints which one ran. That directory
+is gitignored — a checkpoint is a local artifact, not something to commit.
+
 ## Multimodal fallback (opt-in)
 
 Some pages defeat everything local: the text layer is a broken cmap *and* the

@@ -125,12 +125,21 @@ def orphan_vowel_rate(text: str) -> float:
     return len(_ORPHAN_VOWEL.findall(text)) / consonants
 
 
-def score(text: str) -> QualityScore:
-    """Implements Algorithm 2 (Sinhala-Aware Quality Probe)."""
+def score(text: str, *, include_sample_tokens: bool = True) -> QualityScore:
+    """Implements Algorithm 2 (Sinhala-Aware Quality Probe).
+
+    ``include_sample_tokens`` defaults to ``True`` for the Eye, where the text
+    being scored is a whole document and 50 tokens really is a *sample* of it.
+    The Brain scores every final chunk individually (report §6.5.4), and a
+    chunk's own text is already short and already in the result — tokenising
+    it again is redundant, and at chunk volume (thousands per document) the
+    per-call ``sinlib.Tokenizer()`` construction is a real, avoidable cost.
+    Callers scoring short spans in bulk should pass ``False``.
+    """
     return QualityScore(
         raw_length=len(text),
         sinhala_ratio=sinhala_ratio(text),
-        sample_tokens=sample_tokens(text),
+        sample_tokens=sample_tokens(text) if include_sample_tokens else [],
         orphan_vowel_rate=orphan_vowel_rate(text),
     )
 

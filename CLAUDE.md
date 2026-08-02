@@ -764,6 +764,26 @@ argument.
 `ChunkedDocument` supports `len`, `doc[3]`, `doc[2:5]`, iteration, `.texts` for
 plain strings, and `to_json` / `to_jsonl`.
 
+**A fine-tuned checkpoint is integrated, not just a ready seam.** `LabseScorer`
+resolves its model in the same order `capabilities.py` already uses for
+Tesseract and SWI-Prolog: constructor argument → `AKSHARA_LABSE_MODEL` → the
+base hub model (`setu4993/LaBSE`). Fine-tuned on Sinhala Wikipedia (adjacent
+sentences as positives, paragraph-boundary sentences as hard negatives) and
+evaluated on a held-out split:
+
+| | AUC | mean sim, coherent | mean sim, hard-negative |
+|---|---|---|---|
+| Base LaBSE | 0.7269 | 0.3871 | 0.2746 |
+| Fine-tuned | 0.8832 | 0.5313 | 0.1620 |
+
+Bootstrap 95% CI on the AUC improvement: `[+0.1419, +0.1694]` — excludes 0. The
+checkpoint (1.8 GB, gitignored) lives at `models/labse-sinhala-finetuned/`;
+`test_encoder.py`'s `finetuned_labse_dir` fixture skips cleanly wherever it
+isn't present, and asserts the property the model exists to deliver — a
+coherent pair must score above an incoherent one — so a checkpoint swap that
+silently regresses this fails a test rather than only showing up as worse
+chunking downstream.
+
 ### 15.6 Definition of done for the Brain
 
 - `route()` output chunks without the caller touching preprocessing by hand.

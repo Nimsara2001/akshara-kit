@@ -21,6 +21,7 @@ so each distinct span is encoded once.
 
 from __future__ import annotations
 
+import os
 from typing import Protocol, runtime_checkable
 
 from akshara_kit.eye.errors import AdapterUnavailableError
@@ -29,7 +30,8 @@ __all__ = ["DEFAULT_MODEL", "CoherenceScorer", "LabseScorer"]
 
 #: The stock multilingual encoder. Sinhala is among LaBSE's 109 languages, so
 #: this works without any fine-tuning; replace with a fine-tuned checkpoint by
-#: passing ``model_name``.
+#: passing ``model_name``, or via ``AKSHARA_LABSE_MODEL`` — see
+#: :class:`LabseScorer`.
 DEFAULT_MODEL = "setu4993/LaBSE"
 
 
@@ -47,10 +49,18 @@ class CoherenceScorer(Protocol):
 
 
 class LabseScorer:
-    """:class:`CoherenceScorer` backed by a sentence-transformers model."""
+    """:class:`CoherenceScorer` backed by a sentence-transformers model.
 
-    def __init__(self, model_name: str = DEFAULT_MODEL, *, cache_size: int = 4096):
-        self.model_name = model_name
+    Model resolution, in order: the ``model_name`` argument, then the
+    ``AKSHARA_LABSE_MODEL`` environment variable, then :data:`DEFAULT_MODEL`.
+    This mirrors the ``AKSHARA_*`` override already used for Tesseract and
+    SWI-Prolog in :mod:`akshara_kit.eye.capabilities` — a fine-tuned checkpoint
+    can be selected without touching code, and the library still works with
+    nothing but the public hub model on a machine that has no such checkpoint.
+    """
+
+    def __init__(self, model_name: str | None = None, *, cache_size: int = 4096):
+        self.model_name = model_name or os.environ.get("AKSHARA_LABSE_MODEL") or DEFAULT_MODEL
         self._cache_size = cache_size
         self._model = None
         self._cache: dict[str, object] = {}

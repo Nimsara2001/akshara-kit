@@ -305,3 +305,14 @@ def test_chunks_carry_provenance_and_quality(sample_xlsx: pathlib.Path) -> None:
     assert all(c.source_document == "sample.xlsx" for c in doc)
     assert all(c.quality is not None for c in doc)
     assert doc.metadata["segments"] > 0
+
+
+@pytest.mark.prolog
+def test_chunk_quality_omits_sample_tokens(sample_xlsx: pathlib.Path) -> None:
+    """A chunk's text is already short and already in the result — re-tokenising
+    it as a "sample" would be pure redundancy multiplied by thousands of chunks."""
+    from akshara_kit import route
+    from akshara_kit.brain import chunk
+
+    doc = chunk(route(str(sample_xlsx)), scorer=ConstantScorer(0.0))
+    assert all(c.quality.sample_tokens == [] for c in doc)

@@ -11,3 +11,7 @@ wheels/
 
 # Local extraction output (scripts/extract_fixtures.py)
 output/
+
+# Local model checkpoints (e.g. scripts/chunk_fixtures.py, brain/encoder.py)
+models/
+output_before/

@@ -211,7 +211,10 @@ class HybridChunker:
             source_document=source_document,
             source_format=source_format,
             segment_kind=kind,
-            quality=quality_score(text),
+            # A chunk's own text is already short and already in the result,
+            # so re-tokenising it as a "sample" is redundant — see
+            # quality_probe.score's docstring for the per-chunk cost this avoids.
+            quality=quality_score(text, include_sample_tokens=False),
             boundaries=boundaries,
             merged_from=merged_from,
         )

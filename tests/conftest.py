@@ -7,6 +7,7 @@ import pathlib
 import pytest
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+MODELS = pathlib.Path(__file__).parent.parent / "models"
 
 
 def pytest_collection_modifyitems(config, items) -> None:
@@ -114,3 +115,20 @@ def sample_docx() -> pathlib.Path:
 @pytest.fixture(scope="session")
 def sample_xlsx() -> pathlib.Path:
     return FIXTURES / "sample.xlsx"
+
+
+@pytest.fixture(scope="session")
+def finetuned_labse_dir() -> pathlib.Path:
+    """The fine-tuned LaBSE checkpoint, or a skip.
+
+    The checkpoint is 1.8 GB and deliberately not committed (see .gitignore),
+    so any machine other than the one it was copied to — including CI — must
+    skip cleanly rather than fail. This is a separate condition from the
+    `labse` marker's sentence-transformers check above: that check is about
+    whether *any* LaBSE model can run at all, this one is about whether *this
+    specific* checkpoint is present.
+    """
+    path = MODELS / "labse-sinhala-finetuned"
+    if not path.is_dir():
+        pytest.skip(f"fine-tuned LaBSE checkpoint not present at {path}")
+    return path

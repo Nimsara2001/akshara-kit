@@ -67,6 +67,21 @@ def test_sample_tokens_never_raise_on_odd_input() -> None:
     assert score("   ").sample_tokens == []
 
 
+def test_include_sample_tokens_can_be_switched_off() -> None:
+    """The Brain's per-chunk opt-out — everything else still populates."""
+    result = score(UNICODE_SINHALA, include_sample_tokens=False)
+    assert result.sample_tokens == []
+    assert result.raw_length == len(UNICODE_SINHALA)
+    assert result.sinhala_ratio > 0.5
+
+
+def test_sample_tokens_default_to_included() -> None:
+    """The Eye's existing behaviour must not change under the new default."""
+    assert score(UNICODE_SINHALA).sample_tokens == score(
+        UNICODE_SINHALA, include_sample_tokens=True
+    ).sample_tokens
+
+
 # --- orthographic well-formedness -----------------------------------------
 #
 # The signal sinhala_ratio cannot provide. A PDF with a broken ToUnicode cmap
