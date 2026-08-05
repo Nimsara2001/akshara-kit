@@ -68,7 +68,10 @@ def main() -> None:
                 counts["skip"] += 1
                 continue
 
-            out_path = OUTPUT_DIR / f"{src.stem}.chunks.json"
+            # ``src.stem`` alone collides for sample.docx / sample.xlsx (both
+            # stem to "sample"), so the second would silently clobber the
+            # first's output. Keep the original suffix in the stem.
+            out_path = OUTPUT_DIR / f"{src.name}.chunks.json"
             try:
                 result = route(str(src))
                 cleaned = clean(result.text)

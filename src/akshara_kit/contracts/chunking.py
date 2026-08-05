@@ -76,11 +76,26 @@ class ChunkConfig(BaseModel):
     """Tuning for the hybrid bounded agglomerative merge (Algorithm 4)."""
 
     #: Below this cosine similarity two adjacent micro-chunks are deemed to be
-    #: about different things and are not merged.
-    similarity_threshold: float = Field(default=0.6, ge=-1.0, le=1.0)
+    #: about different things and are not merged. 0.6, the pre-calibration
+    #: default, sat *above* the fine-tuned checkpoint's own reported mean for
+    #: genuinely adjacent sentence pairs (0.5313 vs. 0.1620 for paragraph-
+    #: boundary hard negatives — report Section 6.5.3), so it rejected most
+    #: true continuations by construction. Scoring every real adjacent
+    #: micro-chunk pair in the fixture corpus with the checkpoint gives a
+    #: median of ~0.39 and a 25th percentile of ~0.20; 0.2 merges the
+    #: three-quarters of pairs the model does not consider actively
+    #: dissimilar, while still splitting on the clearest topic changes.
+    #: Raise it to bias toward smaller, more tightly-on-topic chunks; lower it
+    #: (toward 0.0) to bias toward hitting ``max_words`` more often at the
+    #: cost of merging more loosely related material.
+    similarity_threshold: float = Field(default=0.2, ge=-1.0, le=1.0)
     #: Upper bound on a final chunk, in words. Checked *before* similarity, so a
     #: long chunk is split even when its halves are perfectly coherent.
-    max_words: int = Field(default=30, ge=1)
+    #: Sinhala prose in the fixture corpus averages ~6.7 characters per word, so
+    #: 300 words lands a fully-merged chunk in the ~1,600-2,000-character range
+    #: (~400-512 embedding tokens) that downstream retrieval targets; a lower
+    #: value is fine when the source material genuinely runs shorter.
+    max_words: int = Field(default=300, ge=1)
     #: Which rule-base pass supplies micro-chunk boundaries. ``SENTENCE`` yields
     #: fewer, more self-contained units; ``CLAUSE`` yields finer ones.
     level: BoundaryKind = BoundaryKind.SENTENCE

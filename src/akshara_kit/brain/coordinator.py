@@ -112,15 +112,37 @@ class HybridChunker:
             respect_table_rows=self.config.respect_table_rows,
         )
 
+        # PROSE segments are paragraphs, not merge boundaries: a paragraph in
+        # these documents is routinely a single short sentence, so scoping the
+        # merge to one segment at a time caps every chunk at one paragraph
+        # regardless of ``max_words``. Consecutive PROSE segments are pooled
+        # into one micro-chunk stream so the merge can run across paragraph
+        # breaks; a `TABLE_ROW`/`SHEET_HEADING` segment still flushes and
+        # interrupts the stream, since those must never be merged into prose.
         pieces: list[tuple[str, SegmentKind, int, list[BoundaryKind]]] = []
         micro_total = 0
+        pending: list[str] = []
+        pending_gaps: set[int] = set()
+
+        def flush_pending() -> None:
+            if pending:
+                pieces.extend(self._merge(pending, pending_gaps))
+            pending.clear()
+            pending_gaps.clear()
+
         for seg in segments:
             if seg.is_atomic:
+                flush_pending()
                 pieces.append((seg.text, seg.kind, 1, [BoundaryKind.TABLE_ROW]))
                 continue
             micro = self.engine.micro_chunks(seg.text, self.config.level)
             micro_total += len(micro)
-            pieces.extend(self._merge(micro))
+            if not micro:
+                continue
+            if pending:
+                pending_gaps.add(len(pending) - 1)
+            pending.extend(micro)
+        flush_pending()
 
         chunks = [
             self._build_chunk(i, text_, kind, merged, bounds, source_document, source_format)
@@ -143,9 +165,16 @@ class HybridChunker:
     # --- Algorithm 4 ------------------------------------------------------
 
     def _merge(
-        self, micro_chunks: list[str]
+        self, micro_chunks: list[str], gaps: set[int] = frozenset()
     ) -> list[tuple[str, SegmentKind, int, list[BoundaryKind]]]:
-        """Bounded agglomerative merge over one prose segment.
+        """Bounded agglomerative merge over one pooled micro-chunk stream.
+
+        ``gaps`` holds indices ``i`` where ``micro_chunks[i]`` and
+        ``micro_chunks[i + 1]`` came from different original paragraphs; a merge
+        across such a pair is recorded as :attr:`BoundaryKind.SEGMENT` instead of
+        the rule-base level, so a chunk's provenance still shows it spans more
+        than one paragraph. The indices stay valid across merges because they are
+        fixed positions in this original list, not in the shrinking accumulator.
 
         Note ``max_words`` bounds *merging*, not the micro-chunks themselves: the
         guardrail is tested against ``combined``, so a single micro-chunk that is
@@ -165,8 +194,9 @@ class HybridChunker:
         merged_from = 1
         boundaries: list[BoundaryKind] = []
 
-        for nxt in micro_chunks[1:]:
+        for i, nxt in enumerate(micro_chunks[1:]):
             combined = f"{current} {nxt}"
+            level = BoundaryKind.SEGMENT if i in gaps else self.config.level
 
             # Guardrail first: an over-long chunk is split regardless of how
             # coherent it is.
@@ -180,7 +210,7 @@ class HybridChunker:
             if self.scorer.score(current, nxt) >= self.config.similarity_threshold:
                 current = combined
                 merged_from += 1
-                boundaries.append(self.config.level)
+                boundaries.append(level)
             else:
                 final.append(
                     (current, SegmentKind.PROSE, merged_from, [*boundaries, BoundaryKind.COHERENCE])
