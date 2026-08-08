@@ -1,5 +1,9 @@
 # akshara-kit
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Nimsara2001/akshara-kit/main/assets/akshara-kit-logo.png" alt="akshara-kit logo" width="200">
+</p>
+
 A hybrid intelligent framework for ingesting Sinhala-language documents into clean,
 Unicode-normalised text suitable for downstream semantic chunking and Retrieval-Augmented
 Generation.
