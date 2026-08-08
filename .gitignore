@@ -5,6 +5,21 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
+.coverage
 
 # Virtual environments
 .venv
+
+# Local extraction output (scripts/extract_fixtures.py)
+output/
+
+# Local model checkpoints (e.g. scripts/chunk_fixtures.py, brain/encoder.py)
+models/
+output_before/
+
+# Build-spec / internal instructions for Claude Code — not for public distribution
+CLAUDE.md
+
+# Stray local artifact from manual script runs at the repo root
+/chunks.json
