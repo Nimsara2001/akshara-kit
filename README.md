@@ -215,39 +215,53 @@ If SWI-Prolog is somewhere unusual, point the library at it with
 The `brain` extra also installs `sentence-transformers`, which pulls in torch.
 It is deliberately **not** part of `all` — the rule base and the merge run
 without it against any object with a `score(a, b) -> float` method, so you can
-supply your own scorer or a fine-tuned encoder:
+supply your own scorer, or the default fine-tuned encoder, or a checkpoint of
+your own:
 
 ```python
 from akshara_kit.brain import LabseScorer
 
-chunk(result, scorer=LabseScorer("path/to/your-finetuned-labse"))
+chunk(result)  # no scorer given -> LabseScorer() -> DEFAULT_MODEL
 ```
 
-A Sinhala fine-tune of LaBSE — trained on Sinhala Wikipedia to separate
-topically-coherent sentence pairs from paragraph-boundary hard negatives —
-measurably outperforms the base model on this task:
+`chunk()` uses `LabseScorer()` — a Sinhala fine-tune of LaBSE — by default, so
+**no setup is required to get the better model**: `pip install akshara-kit[brain]`
+and call `chunk()`. `sentence-transformers` fetches the checkpoint from the
+Hugging Face Hub on first call and caches it locally; every call after that is
+local, no network. The fine-tune was trained on Sinhala Wikipedia to separate
+topically-coherent sentence pairs from paragraph-boundary hard negatives, and
+measurably outperforms the base multilingual model on this task:
 
 | | AUC | mean sim, coherent | mean sim, hard-negative |
 |---|---|---|---|
 | Base LaBSE | 0.7269 | 0.3871 | 0.2746 |
-| Fine-tuned | 0.8832 | 0.5313 | 0.1620 |
+| Fine-tuned (default) | 0.8832 | 0.5313 | 0.1620 |
 
-To use a fine-tuned checkpoint without passing `scorer` at every call site, set
-`AKSHARA_LABSE_MODEL` — same resolution order as `AKSHARA_SWIPL_CMD` above
-(explicit argument, then the environment variable, then the base hub model):
-
-```bash
-export AKSHARA_LABSE_MODEL=/path/to/labse-sinhala-finetuned
-```
+To use the base multilingual model instead, or your own checkpoint, override
+with `model_name` or `AKSHARA_LABSE_MODEL` — same resolution order as
+`AKSHARA_SWIPL_CMD` above (explicit argument, then the environment variable,
+then `DEFAULT_MODEL`):
 
 ```python
-chunk(result)   # now uses the checkpoint at AKSHARA_LABSE_MODEL
+chunk(result, scorer=LabseScorer("setu4993/LaBSE"))        # base model
+chunk(result, scorer=LabseScorer("path/to/your-finetune")) # your own checkpoint
 ```
 
-`scripts/chunk_fixtures.py` does this automatically for local development: if
-`models/labse-sinhala-finetuned/` exists in the project root it's used in
-place of the base model, and the script prints which one ran. That directory
-is gitignored — a checkpoint is a local artifact, not something to commit.
+```bash
+export AKSHARA_LABSE_MODEL=setu4993/LaBSE
+```
+
+`scripts/chunk_fixtures.py` prefers a local checkpoint for local development:
+if `models/labse-sinhala-finetuned/` exists in the project root it's used in
+place of whatever `AKSHARA_LABSE_MODEL` resolves to, and the script prints
+which one ran. That directory is gitignored — a checkpoint is a local
+artifact, not something to commit.
+
+Nothing downloads until `chunk()` actually runs — there is no install-time or
+import-time fetch, matching this library's consent-first stance on network
+access (see [Multimodal fallback](#multimodal-fallback-opt-in) below). The
+download is a one-time cost: `sentence-transformers` caches the checkpoint
+under `~/.cache/huggingface/hub`, so every call after the first is local.
 
 ## Multimodal fallback (opt-in)
 

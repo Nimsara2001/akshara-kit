@@ -13,10 +13,11 @@ merge, a sentence encoder (LaBSE by default, which needs sentence-transformers
 why for the affected fixture and moves on rather than crashing the whole run.
 
 If a fine-tuned checkpoint is present at ``models/labse-sinhala-finetuned``
-(see the project README), this script uses it in place of the base hub model —
-that is project-local convenience, not a library default; see
-``brain/encoder.py``'s ``AKSHARA_LABSE_MODEL`` resolution for how to point the
-library itself at a checkpoint.
+(see the project README), this script uses that local copy in place of
+downloading the same fine-tune from the Hub — that is project-local
+convenience, not a library default; see ``brain/encoder.py``'s
+``AKSHARA_LABSE_MODEL`` resolution for how to point the library itself at a
+checkpoint.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ def main() -> None:
         print(f"[scorer] fine-tuned LaBSE: {MODEL_DIR}")
     else:
         scorer = None  # HybridChunker falls back to LabseScorer()'s own default
-        print(f"[scorer] {MODEL_DIR} not found; falling back to the base hub LaBSE")
+        print(f"[scorer] {MODEL_DIR} not found; downloading the fine-tune from the Hub")
 
     # One chunker for the whole run: the Prolog process and the sentence
     # encoder are both expensive to start, and the rule base is a pure

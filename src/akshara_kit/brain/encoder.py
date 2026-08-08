@@ -28,11 +28,12 @@ from akshara_kit.eye.errors import AdapterUnavailableError
 
 __all__ = ["DEFAULT_MODEL", "CoherenceScorer", "LabseScorer"]
 
-#: The stock multilingual encoder. Sinhala is among LaBSE's 109 languages, so
-#: this works without any fine-tuning; replace with a fine-tuned checkpoint by
-#: passing ``model_name``, or via ``AKSHARA_LABSE_MODEL`` — see
-#: :class:`LabseScorer`.
-DEFAULT_MODEL = "setu4993/LaBSE"
+#: Sinhala fine-tune of LaBSE (AUC 0.8832 vs 0.7269 for base LaBSE — see
+#: README "Neural encoder" section), hosted on the Hugging Face Hub so no
+#: local checkpoint is required. Override with ``model_name`` or
+#: ``AKSHARA_LABSE_MODEL`` to use the base multilingual model
+#: (``setu4993/LaBSE``) or a different checkpoint — see :class:`LabseScorer`.
+DEFAULT_MODEL = "Nimsara2001/labse-sinhala-finetuned"
 
 
 @runtime_checkable
